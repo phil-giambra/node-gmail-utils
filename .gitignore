@@ -1,3 +1,7 @@
 # node
 node_modules/
 package-lock.json
+
+#google api
+credentials.json
+token.json

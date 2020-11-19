@@ -1,0 +1,14 @@
+{
+  "name": "node-gmail-utils",
+  "version": "1.0.0",
+  "description": "Work with the gmail API in node js",
+  "dependencies": {
+    "googleapis": "^65.0.0"
+  },
+  "devDependencies": {},
+  "main": "index.js",
+  "scripts": {
+    "build": "",
+    "start": "node ."
+  }
+}
