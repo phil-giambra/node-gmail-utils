@@ -2,11 +2,17 @@ const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
 
+//*** maybe want to check if we are a sub-process here
+// this would allow to setup for working as a sub-process
+// or as a main process directly the command line
+// if (!process.send) {  }
+
+
 // check for cmd line options and setup the config location
 let altconfig = null
 
 // when _exit_when_done (-e) is true the script to run one action and exit once its complete
-// this behavior may be achived in the caling scripts code as well 
+// this behavior may be achived in the caling scripts code as well
 let _exit_when_done = false
 let args = process.argv
 console.log("cmd-args", args);
@@ -44,7 +50,7 @@ console.log( osuser , configbase);
 
 // setup config and identities
 let ID = {}
-let LocalConfig = { }
+let LocalConfig = { /*this may not be needed*/}
 
 function saveLocalConfig(restart = null) {
     fs.writeFileSync(configbase + "/config.json", JSON.stringify(LocalConfig,null,4) ) //
