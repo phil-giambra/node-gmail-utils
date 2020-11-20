@@ -2,25 +2,49 @@ const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
 
+// check for cmd line options and setup the config location
+let altconfig = null
+
+// when _exit_when_done (-e) is true the script to run one action and exit once its complete
+// this behavior may be achived in the caling scripts code as well 
+let _exit_when_done = false
+let args = process.argv
+console.log("cmd-args", args);
+args.forEach((item, i) => {
+    if (item === "-c") { altconfig = args[i+1]}
+    if (item === "-e") { _exit_when_done = true}
+});
+
 let osuser
 let configbase
+if (altconfig === null) {}
 //console.log(process.platform);
 if (process.platform === 'win32') {
     osuser = process.env.USERNAME
     // for windows we will convert to forward slashes like linux
-    configbase = process.env.APPDATA.replace(/\\/g, "/")
-    configbase += "/node-gmail-utils"
+    if (altconfig === null) {
+        configbase = process.env.APPDATA.replace(/\\/g, "/")
+        configbase += "/node-gmail-utils"
+    } else {
+        configbase = altconfig.replace(/\\/g, "/")
+    }
+
 }
 else if (process.platform === 'linux') {
-    osuser = process.env.USER
-    configbase = process.env.HOME + "/" +".config"+ "/" + "node-gmail-utils""
+    if (altconfig === null) {
+        osuser = process.env.USER
+        configbase = process.env.HOME + "/" +".config"+ "/" + "node-gmail-utils""
+    } else {
+        configbase = altconfig
+    }
+
 }
 
 console.log( osuser , configbase);
 
-// check for credentials.json and
-let CREDS = null
-let LocalConfig = { email:"user@example.com", name:"User Name" }
+// setup config and identities
+let ID = {}
+let LocalConfig = { }
 
 function saveLocalConfig(restart = null) {
     fs.writeFileSync(configbase + "/config.json", JSON.stringify(LocalConfig,null,4) ) //
@@ -30,16 +54,67 @@ function saveLocalConfig(restart = null) {
 if ( !fs.existsSync( configbase ) ) {
     console.log("CREATE: user data folder", configbase);
     fs.mkdirSync( configbase, { recursive: true } )
+
     saveLocalConfig()
 } else {
     if (fs.existsSync(configbase + "/config.json")) {
-        console.log('LOAD: config_admin.json.');
+        console.log('LOAD: config.json.');
         LocalConfig = JSON.parse( fs.readFileSync(configbase + "/config.json",'utf8') )
     } else {
         saveLocalConfig()
     }
 
 }
+
+
+// identities are setup manually by adding a subfolder to  {configbase}/identities"
+// the folder should be named as the users gmail or gsuite address
+// inside this folder should be a OAuth 2.0 Client ID credentials.json (see README.md on how to get this file from google )
+// and an options.json file for this identity
+// we will look for any existing identities and add them to ID
+// if no identities exist or any are missing credentials or options we will notify the user and exit
+
+let _ids_ok = true
+
+if ( fs.existsSync( configbase +"/identities") ) {
+    let filelist =  fs.readdirSync(configbase +"/identities")
+    for (var i = 0; i < filelist.length; i++) {
+        let id = filelist[i]
+        if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/credentials.json" ) ) {
+            ID[id] = {}
+
+            ID[id].creds = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/credentials.json",'utf8') )
+            ID[id].token_path = configbase +"/identities/"+filelist[i]+"/token.json"
+
+        } else {
+            console.log(`Error loading client secret file: ${configbase}/identities/${filelist[i]}/credentials.json`);
+            console.log(`You must place Google API credentials at the above location`);
+            _ids_ok = false
+        }
+        if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/options.json" ) ) {
+            if ( ID[id] ){
+                ID[id].options = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/options.json",'utf8') )
+            }
+
+        } else {
+            console.log(`Error loading options.json file: ${configbase}/identities/${filelist[i]}/options.json`);
+            console.log(`You must create the file options.json at the above location`);
+            _ids_ok = false
+        }
+
+    }
+} else {
+    fs.mkdirSync( configbase+"/identities", { recursive: true } )
+    _ids_ok = false
+}
+
+if ( _ids_ok === false ) {
+    console.log("Exiting due to invalid or missing google credentials");
+    process.exit()
+}
+
+
+/*
 // Load client secrets from a local file.
 if (fs.existsSync(configbase + "/credentials.json")) {
     CREDS = JSON.parse( fs.readFileSync(configbase + "/credentials.json",'utf8') )
@@ -49,10 +124,9 @@ if (fs.existsSync(configbase + "/credentials.json")) {
     console.log(`You must place Google API credentials at the above location`);
     process.exit()
 }
+*/
 
 
-let args = process.argv
-console.log("cmd-args", args);
 
 //process.exit()
 
