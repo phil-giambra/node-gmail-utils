@@ -2,23 +2,76 @@ const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
 
+let osuser
+let configbase
+//console.log(process.platform);
+if (process.platform === 'win32') {
+    osuser = process.env.USERNAME
+    // for windows we will convert to forward slashes like linux
+    configbase = process.env.APPDATA.replace(/\\/g, "/")
+    configbase += "/node-gmail-utils"
+}
+else if (process.platform === 'linux') {
+    osuser = process.env.USER
+    configbase = process.env.HOME + "/" +".config"+ "/" + "node-gmail-utils""
+}
+
+console.log( osuser , configbase);
+
+// check for credentials.json and
+let CREDS = null
+let LocalConfig = { email:"user@example.com", name:"User Name" }
+
+function saveLocalConfig(restart = null) {
+    fs.writeFileSync(configbase + "/config.json", JSON.stringify(LocalConfig,null,4) ) //
+}
+
+
+if ( !fs.existsSync( configbase ) ) {
+    console.log("CREATE: user data folder", configbase);
+    fs.mkdirSync( configbase, { recursive: true } )
+    saveLocalConfig()
+} else {
+    if (fs.existsSync(configbase + "/config.json")) {
+        console.log('LOAD: config_admin.json.');
+        LocalConfig = JSON.parse( fs.readFileSync(configbase + "/config.json",'utf8') )
+    } else {
+        saveLocalConfig()
+    }
+
+}
+// Load client secrets from a local file.
+if (fs.existsSync(configbase + "/credentials.json")) {
+    CREDS = JSON.parse( fs.readFileSync(configbase + "/credentials.json",'utf8') )
+} else {
+    // flesh this out add a link to google developer console
+    console.log(`Error loading client secret file: ${configbase}/credentials.json`);
+    console.log(`You must place Google API credentials at the above location`);
+    process.exit()
+}
+
+
+let args = process.argv
+console.log("cmd-args", args);
+
+//process.exit()
+
 // If modifying these scopes, delete token.json.
-const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+const SCOPES = ['https://mail.google.com/',
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.compose',
+      'https://www.googleapis.com/auth/gmail.send'];
 // The file token.json stores the user's access and refresh tokens, and is
 // created automatically when the authorization flow completes for the first
 // time.
-const TOKEN_PATH = 'token.json';
+const TOKEN_PATH = configbase + "/token.json";
 
-// Load client secrets from a local file.
-fs.readFile('credentials.json', (err, content) => {
-  if (err) return console.log('Error loading client secret file:', err);
-  // Authorize a client with credentials, then call the Gmail API.
-  authorize(JSON.parse(content), saveOAuthClient);
-});
+
 
 /**
  * Create an OAuth2 client with the given credentials, and then execute the
- * given callback function.
+ * given callback function which will be the requested action eg. send / get.
+
  * @param {Object} credentials The authorization client credentials.
  * @param {function} callback The callback to call with the authorized client.
  */
