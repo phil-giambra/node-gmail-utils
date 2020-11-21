@@ -4,70 +4,68 @@ const {google} = require('googleapis');
 
 //*** maybe want to check if we are a sub-process here
 // this would allow to setup for working as a sub-process
-// or as a main process directly the command line
+// or as a main process directly on the command line
 let _is_subprocess = true
-if (!process.send) {
-    _is_subprocess = false
-}
-
+if (!process.send) { _is_subprocess = false }
 
 // check for cmd line options and setup the config location
 let altconfig = null
-
-// when _exit_when_done (-e) is true the script to run one action and exit once its complete
-// this behavior may be achived in the caling scripts code as well
 let _exit_when_done = false
+
 let args = process.argv
 console.log("cmd-args", args);
 args.forEach((item, i) => {
-    if (item === "-c") { altconfig = args[i+1]}
-    if (item === "-e") { _exit_when_done = true}
+    if (item === "-c" || item === "/c") { altconfig = args[i+1]}
+    // when _exit_when_done (-e) is true the script to run one action and exit once its complete
+    // this behavior may be achived in the calling scripts code as well
+    if (item === "-e" || item === "/e"  ) { _exit_when_done = true}
 });
 
 let osuser
 let configbase
-if (altconfig === null) {}
+
 //console.log(process.platform);
+//*** maybe add mac in here too
 if (process.platform === 'win32') {
     osuser = process.env.USERNAME
     // for windows we will convert to forward slashes like linux
     if (altconfig === null) {
         configbase = process.env.APPDATA.replace(/\\/g, "/")
-        configbase += "/node-gmail-utils"
     } else {
         configbase = altconfig.replace(/\\/g, "/")
+        console.log("using alt config");
     }
 
 }
 else if (process.platform === 'linux') {
     if (altconfig === null) {
         osuser = process.env.USER
-        configbase = process.env.HOME + "/" +".config"+ "/" + "node-gmail-utils""
+        configbase = process.env.HOME + "/" +".config"
     } else {
         configbase = altconfig
+        console.log("using alt config");
     }
 
 }
 
+if ( configbase.endsWith("/") ) { configbase += "node-gmail-utils" } else { configbase += "/node-gmail-utils"}
 console.log( osuser , configbase);
 
-// setup config and identities
-let ID = {}
-let LocalConfig = { /*this may not be needed*/}
 
-function saveLocalConfig(restart = null) {
-    fs.writeFileSync(configbase + "/config.json", JSON.stringify(LocalConfig,null,4) ) //
+// setup config and identities
+let LocalConfig = { /*this may not be needed*/}
+function saveLocalConfig() {
+    fs.writeFileSync(configbase + "/config.json", JSON.stringify(LocalConfig,null,4) )
 }
 
 
 if ( !fs.existsSync( configbase ) ) {
-    console.log("CREATE: user data folder", configbase);
+    console.log("Creating config folder", configbase);
     fs.mkdirSync( configbase, { recursive: true } )
-
     saveLocalConfig()
 } else {
     if (fs.existsSync(configbase + "/config.json")) {
-        console.log('LOAD: config.json.');
+        console.log('Loading config.json.');
         LocalConfig = JSON.parse( fs.readFileSync(configbase + "/config.json",'utf8') )
     } else {
         saveLocalConfig()
@@ -76,17 +74,19 @@ if ( !fs.existsSync( configbase ) ) {
 }
 
 
-// identities are setup manually by adding a subfolder to  {configbase}/identities"
+// Identities are setup manually by adding a subfolder to  {configbase}/identities"
 // the folder should be named as the users gmail or gsuite address
 // inside this folder should be a OAuth 2.0 Client ID credentials.json (see README.md on how to get this file from google )
 // and an options.json file for this identity
 // we will look for any existing identities and add them to ID
 // if no identities exist or any are missing credentials or options we will notify the user and exit
 
+let ID = {}
 let _ids_ok = true
 
 if ( fs.existsSync( configbase +"/identities") ) {
     let filelist =  fs.readdirSync(configbase +"/identities")
+    if (filelist.length === 0) { _ids_ok = false }
     for (var i = 0; i < filelist.length; i++) {
         let id = filelist[i]
         if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/credentials.json" ) ) {
@@ -119,21 +119,16 @@ if ( fs.existsSync( configbase +"/identities") ) {
 
 if ( _ids_ok === false ) {
     console.log("Exiting due to invalid or missing google credentials");
+    if ( _is_subprocess === true ) {
+        process.send({type:"error", reason:"bad_credentials", msg:"Exiting due to invalid or missing google credentials" })
+    }
     process.exit()
 }
 
-
+setTimeout(function(){
+    console.log("still here");
+},5000)
 /*
-// Load client secrets from a local file.
-if (fs.existsSync(configbase + "/credentials.json")) {
-    CREDS = JSON.parse( fs.readFileSync(configbase + "/credentials.json",'utf8') )
-} else {
-    // flesh this out add a link to google developer console
-    console.log(`Error loading client secret file: ${configbase}/credentials.json`);
-    console.log(`You must place Google API credentials at the above location`);
-    process.exit()
-}
-*/
 
 // If modifying these scopes, after a token has been generated you will
 // need to delete the token so it can be regenerated
@@ -208,3 +203,6 @@ function getNewToken(id, oAuth2Client, callback) {
     });
 
 }
+
+
+*/

@@ -1,3 +1,7 @@
+
+// This script is just a first test to actually send an email
+// it is just here for reference and will eventually be removed
+
 const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
