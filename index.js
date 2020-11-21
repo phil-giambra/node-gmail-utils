@@ -2,23 +2,40 @@ const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
 
-//*** maybe want to check if we are a sub-process here
-// this would allow to setup for working as a sub-process
+// returns a string such as "2020-10-13" for the given seconds since epoch or the current day if secs is undefined
+function getDateNow(secs) {
+    let d
+    if (secs === undefined) { d = new Date() } else { d = new Date(secs) }
+    let datenow  = [  d.getFullYear(),  ('0' + (d.getMonth() + 1)).slice(-2),  ('0' + d.getDate()).slice(-2)].join('-');
+    return datenow
+}
+
+// returns a string such as "14:25" for the given seconds since epoch or the current time if secs is undefined
+function getTimeNow(secs) {
+    let d
+    if (secs === undefined) { d = new Date() } else { d = new Date(secs) }
+    let datenow  = [    ('0' + d.getHours() ).slice(-2),  ('0' + d.getMinutes()).slice(-2)].join(':');
+    return datenow
+}
+
+// check if we are a sub-process
+// this allows to setup for working as a sub-process
 // or as a main process directly on the command line
 let _is_subprocess = true
 if (!process.send) { _is_subprocess = false }
 
 // check for cmd line options and setup the config location
 let altconfig = null
-let _exit_when_done = false
+
+let new_identity = null
 
 let args = process.argv
 console.log("cmd-args", args);
 args.forEach((item, i) => {
+    // use alternate config location
     if (item === "-c" || item === "/c") { altconfig = args[i+1]}
-    // when _exit_when_done (-e) is true the script to run one action and exit once its complete
-    // this behavior may be achived in the calling scripts code as well
-    if (item === "-e" || item === "/e"  ) { _exit_when_done = true}
+    // add new identity
+    if (item === "-a" || item === "/a") { new_identity = args[i+1]}
 });
 
 let osuser
@@ -74,13 +91,15 @@ if ( !fs.existsSync( configbase ) ) {
 }
 
 
+
+
 // Identities are setup manually by adding a subfolder to  {configbase}/identities"
 // the folder should be named as the users gmail or gsuite address
 // inside this folder should be a OAuth 2.0 Client ID credentials.json (see README.md on how to get this file from google )
 // and an options.json file for this identity
 // we will look for any existing identities and add them to ID
 // if no identities exist or any are missing credentials or options we will notify the user and exit
-
+let IdList = []
 let ID = {}
 let _ids_ok = true
 
@@ -89,9 +108,9 @@ if ( fs.existsSync( configbase +"/identities") ) {
     if (filelist.length === 0) { _ids_ok = false }
     for (var i = 0; i < filelist.length; i++) {
         let id = filelist[i]
+        ID[id] = {}
+        IdList.push({ identity:id, oauth:null, status:null })
         if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/credentials.json" ) ) {
-            ID[id] = {}
-
             ID[id].creds = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/credentials.json",'utf8') )
             ID[id].token_path = configbase +"/identities/"+filelist[i]+"/token.json"
 
@@ -117,6 +136,13 @@ if ( fs.existsSync( configbase +"/identities") ) {
     _ids_ok = false
 }
 
+// check for new identity to add
+//*** should validate email here
+if (new_identity !== null) {
+    //console.log(ID);
+    if ( createIdentity(new_identity) ) { _ids_ok = false }
+}
+
 if ( _ids_ok === false ) {
     console.log("Exiting due to invalid or missing google credentials");
     if ( _is_subprocess === true ) {
@@ -125,10 +151,42 @@ if ( _ids_ok === false ) {
     process.exit()
 }
 
-setTimeout(function(){
-    console.log("still here");
-},5000)
-/*
+
+
+
+let _tokens_ok = false
+
+
+
+if (_is_subprocess){
+    process.on('message', (packet) => {
+      console.log('Message from parent process', packet);
+      if (packet.type === "auth_reply") {
+          handleAuthReply(packet)
+      }
+      if (packet.type === "action") {
+          if ( _tokens_ok === true) {
+              handleActions(packet)
+          } else {
+              packet.type = "action_responce"
+              packet.status = "error"
+              process.send({type:"action_responce", value:"ready"})
+          }
+
+      }
+      else if (packet.type === "exit") {
+          process.exit()
+      }
+      else {
+          console.log('Unknown type', packet);
+      }
+    });
+
+}
+
+
+
+
 
 // If modifying these scopes, after a token has been generated you will
 // need to delete the token so it can be regenerated
@@ -139,34 +197,96 @@ const SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
-//const TOKEN_PATH = configbase + "/token.json";
+// check existance of token for each identity at startup
+// if missing get one
+if (IdList.length > 0){ testForToken(0) }
 
-// we may want to try to authorize() each identity at startup
-// to make sure we have token for them all
-for (let id in ID) {
-    authorize(id, testForToken )
+function testForToken(pos) {
+    if (pos > IdList.length - 1 ) {
+        // all done checking tokens ready for normal operations
+        console.log("Token check complete, ready for actions");
+        _tokens_ok = true
+        if (_is_subprocess) { process.send({type:"status", value:"ready"}) }
+        // testing
+        //authorize("philgiambra@gmail.com", sendMail)
+        return
+    }
+    let id = IdList[pos].identity
+    if (fs.existsSync(ID[id].token_path)){
+        ID[id].token = JSON.parse( fs.readFileSync(ID[id].token_path,'utf8') )
+        //console.log(`Token for ${id} expires on ${getDateNow(ID[id].token.expiry_date)} at ${getTimeNow(ID[id].token.expiry_date)}`);
+        IdList[pos].status = "ok"
+        testForToken(pos+1)
+
+    } else {
+        //missing token request one
+        console.log("missing token requesting one");
+        getNewToken(id,pos)
+    }
 }
 
-function testForToken(oAuth2Client, id) {
-
-}
-
-
-function authorize(id, callback) {
+function getNewToken(id,pos) {
+    // first create an oauth client
     const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
-    const oAuth2Client = new google.auth.OAuth2(
-        client_id, client_secret, redirect_uris[0]);
-
-        // Check if we have previously stored a token.
-        fs.readFile(ID[id].token_path, (err, token) => {
-            if (err) return getNewToken(id, oAuth2Client, callback);
-            oAuth2Client.setCredentials(JSON.parse(token));
-            callback(oAuth2Client);
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    const authUrl = oAuth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: SCOPES,
+    });
+    ID[id].oauth = oAuth2Client
+    if ( _is_subprocess === false ) {
+        console.log(`Authorize token needed for ${id} open this url in a browser: \n ${authUrl}` );
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
         });
+        rl.question('Enter the code from that page here: ', (code) => {
+            rl.close();
+            handleAuthReply({type:"auth_reply", identity:id, pos:pos, code: code })
+        });
+
+    } else {
+        // send request for auth code to main process
+        process.send({type:"auth_requested", identity:id, pos:pos, url: authUrl })
+        //testForToken(pos+1)
+
+
+    }
+
 }
 
-let _waiting_for_auth = false
+function handleAuthReply(packet) {
+    let id = packet.identity
+    let pos = packet.pos
+    let oAuth2Client = ID[id].oauth
 
+    oAuth2Client.getToken(packet.code, (err, token) => {
+        if (err) return console.error(`Error retrieving access token for ${id}`, err);
+        oAuth2Client.setCredentials(token);
+        // Store the token to disk for later program executions
+        fs.writeFile(ID[id].token_path, JSON.stringify(token), (err) => {
+            if (err) return console.error(err);
+            console.log(`Token stored for ${id} at ${ID[id].token_path} `);
+            // ok now check the token again
+            testForToken(pos)
+        });
+
+    });
+
+
+}
+
+function authorize(id, data, callback) {
+    const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    oAuth2Client.setCredentials(ID[id].token);
+    callback(id, data, oAuth2Client);
+
+}
+
+
+
+/*
 function getNewToken(id, oAuth2Client, callback) {
     const authUrl = oAuth2Client.generateAuthUrl({
         access_type: 'offline',
@@ -185,10 +305,9 @@ function getNewToken(id, oAuth2Client, callback) {
         });
     } else {
         // send request for auth code to main process
-        // but how do we respond
-
         process.send({type:"auth_requested", identity:id, url: authUrl })
-        _waiting_for_auth = true
+        return callback(oAuth2Client, id, false);
+
     }
 
     oAuth2Client.getToken(url_code, (err, token) => {
@@ -199,10 +318,75 @@ function getNewToken(id, oAuth2Client, callback) {
             if (err) return console.error(err);
             console.log(`Token stored for ${id} at ${ID[id].token_path} `);
         });
-        callback(oAuth2Client);
+        callback(oAuth2Client, id, true);
     });
 
 }
-
-
 */
+
+
+
+
+// create the folder and options.json for a new identity
+function createIdentity(id) {
+    if (ID[id]){
+        console.log(`Create identity failed. Identity ${id} already exists `);
+        return false
+    }
+    let path =  configbase+"/identities/"+id
+    let default_options = { dname:id , pre_body:"", post_body:"", cc:[] }
+    fs.mkdirSync( path , { } )
+    fs.writeFileSync(path + "/options.json", JSON.stringify(default_options,null,4) )
+    console.log(`Identity created for ${id}`);
+    return true
+}
+
+
+function handleActions(packet) {
+    console.log("Processing Action ", packet);
+    let id = packet.identity
+    if (!ID[id]) {
+        return "invalid ID"
+    }
+    if (packet.action === "send") {
+        authorize("philgiambra@gmail.com", packet.data , sendMail)
+    }
+}
+
+
+async function sendMail(id, data, auth) {
+    // You can use UTF-8 encoding for the subject using the method below.
+ // You can also just use a plain string if you don't need anything fancy.
+ const gmail = google.gmail({version: 'v1', auth:auth});
+ const subject = data.subject;
+ const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
+ const messageParts = [
+
+   `From: ${ID[id].options.dname} <${id}>`,
+   `To: ${data.toName} <${data.toAddr}>`,
+   'Content-Type: text/html; charset=utf-8',
+   'MIME-Version: 1.0',
+   `Subject: ${utf8Subject}`,
+   '',
+   `${ID[id].options.pre_body}`,
+   `${data.body}`,
+   `${ID[id].options.post_body}`,
+ ];
+ const message = messageParts.join('\n');
+
+ // The body needs to be base64url encoded.
+ const encodedMessage = Buffer.from(message)
+   .toString('base64')
+   .replace(/\+/g, '-')
+   .replace(/\//g, '_')
+   .replace(/=+$/, '');
+
+ const res = await gmail.users.messages.send({
+   userId: 'me',
+   requestBody: {
+     raw: encodedMessage,
+   },
+ });
+ console.log("got responce from gmail",res.data);
+ //return res.data;
+}
