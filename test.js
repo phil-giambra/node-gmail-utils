@@ -2,6 +2,10 @@
 const { fork } = require('child_process');
 const readline = require('readline');
 
+let args = process.argv
+console.log("cmd-args", args);
+let user_id = args[args.length - 1]
+console.log(user_id);
 let workers = {}
 
 workers.test = fork('index.js');
@@ -16,8 +20,10 @@ workers.test.on('message', (packet) => {
     }
     if (packet.type === "action_responce") {
         if (packet.status === "error"){
+            console.log("got an action responce error");
             handleActionError(packet)
         } else {
+            console.log("got a good action responce");
             handleActionResponce(packet)
         }
 
@@ -38,7 +44,7 @@ function handleAuth(packet) {
     });
     rl.question('Enter the code from that page here: ', (code) => {
         rl.close();
-        workers.test.send({ type:"auth_reply", identity:packet.identity, pos:packet.pos, authcode: code });
+        workers.test.send({ type:"auth_reply", identity:packet.identity, pos:packet.pos, code: code });
     });
 }
 
@@ -51,8 +57,8 @@ function handleActionResponce(packet) {
 }
 
 let email = {
-    toName:"Jakes Place",
-    toAddr:"info@jakesplaceny.com",
+    toName:user_id,
+    toAddr:user_id,
     subject:"node-gmail-utils TEST",
     body:"This is a test email sent by node-gmail-utils ",
     options:{ //(optional) these will override the existing identities options if they are declared
@@ -67,7 +73,7 @@ function sendMail( id, email) {
     if (workers.test.active === true) {
         workers.test.send({ type:"action", action:"send", identity:id, data:email });
     } else {
-        console.log("worker is not ready yet re-trying in 2 seconds");
+        //console.log("worker is not ready yet re-trying in 2 seconds");
         setTimeout(function(){
             sendMail( id, email)
         },2000)
@@ -78,6 +84,6 @@ function sendMail( id, email) {
 
 
 setTimeout(function(){
-    console.log("sending test email");
-    sendMail( "philgiambra@gmail.com", email)
+    //console.log("sending test email");
+    sendMail( user_id, email)
 },5000)

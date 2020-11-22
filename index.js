@@ -13,7 +13,7 @@ if (!process.send) { _is_subprocess = false }
 let altconfig = null
 let new_identity = null
 let args = process.argv
-//console.log("cmd-args", args);
+console.log("cmd-args", args);
 args.forEach((item, i) => {
     // use alternate config location
     if (item === "-c" || item === "/c") { altconfig = args[i+1]}
@@ -166,10 +166,14 @@ if ( _is_subprocess ){
 
 // If modifying these scopes, after a token has been generated you will
 // need to delete the token so it can be regenerated
-const SCOPES = [
+/*const SCOPES = [
     'https://mail.google.com/',
     'https://www.googleapis.com/auth/gmail.modify',
     'https://www.googleapis.com/auth/gmail.compose',
+    'https://www.googleapis.com/auth/gmail.send'
+]*/
+
+const SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
@@ -316,10 +320,16 @@ function handleActions(packet) {
     console.log("Processing Action ", packet);
     let id = packet.identity
     if (!ID[id]) {
-        return "invalid ID"
+        console.log("invalid ID action canceled" );
+        if (_is_subprocess) {
+            packet.type = "action_responce"
+            packet.status = "error"
+            process.send(packet)
+        }
+        return
     }
     if (packet.action === "send") {
-        authorize("philgiambra@gmail.com", packet.data , sendMail)
+        authorize(id, packet.data , sendMail)
     }
 }
 
