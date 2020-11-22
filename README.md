@@ -1,4 +1,4 @@
-# node-gmail-utils
+# node-gmail-worker
 Work with the gmail API in node js
 ## !!! not fully working yet
 This app is meant to be a relatively simple means to send  Gmail from a Node js program.
@@ -15,13 +15,13 @@ NOTE: To use this app you will need to obtain a credentials file from google (se
 
 | Syntax               | Description
 | :---                 | :----   
-| `-c /path/to/config`              | Use an alternate config location<br> A folder named node-gmail-utils will be created at the location specified.<br> This option can be combined with all other options.        
+| `-c /path/to/config`              | Use an alternate config location<br> A folder named node-gmail-worker will be created at the location specified.<br> This option can be combined with all other options.        
 | `-a emailAddress`      | Add a new identity to config. <br> This will create a folder and an options.json file.<br> You can edit the options.json to your liking <br>then add your credentials.json that you get from Goolge<br> Can only be combined with -c option.
 | `-s '{json:string}'`| Send an email defined in json text. <br>This option is not working yet.
 
 
 ## Working as a sub-process
-You can read the test.js script to see an example of how to use node-gmail-utils from another app
+You can read the test.js script to see an example of how to use node-gmail-worker from another app
 
 * You will need to create an identity, either manually or with the -a option on the command line before running test.js
   * `node index.js -a YourEmailAddress`  
@@ -66,4 +66,4 @@ Here you will need to select the user type. Unless you have a GSuite account you
 
 * Under the OAuth 2.0 Client IDs section you will see the client you just created. On the left end of it's entry click the download icon.
 
-* Rename the downloaded file to credentials.json and move or copy it into the proper identity folder for node-gmail-utils
+* Rename the downloaded file to credentials.json and move or copy it into the proper identity folder for node-gmail-worker

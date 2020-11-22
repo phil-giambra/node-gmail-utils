@@ -59,8 +59,8 @@ function handleActionResponce(packet) {
 let email = {
     toName:user_id,
     toAddr:user_id,
-    subject:"node-gmail-utils TEST",
-    body:"This is a test email sent by node-gmail-utils ",
+    subject:"node-gmail-worker TEST",
+    body:"This is a test email sent by node-gmail-worker ",
     options:{ //(optional) these will override the existing identities options if they are declared
         //dname:"" ,
         //pre_body:"",

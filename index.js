@@ -48,7 +48,7 @@ else if (process.platform === 'linux') {
 
 }
 
-if ( configbase.endsWith("/") ) { configbase += "node-gmail-utils" } else { configbase += "/node-gmail-utils"}
+if ( configbase.endsWith("/") ) { configbase += "node-gmail-worker" } else { configbase += "/node-gmail-worker"}
 console.log( osuser , configbase);
 
 

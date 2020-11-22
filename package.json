@@ -1,5 +1,5 @@
 {
-  "name": "node-gmail-utils",
+  "name": "node-gmail-worker",
   "version": "1.0.0",
   "description": "Work with the gmail API in node js",
   "dependencies": {
