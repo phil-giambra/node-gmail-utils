@@ -1,23 +1,23 @@
 # node-gmail-worker
-Work with the gmail API in node js
+Work with the Gmail API in Node.js
 ## !!! not fully working yet
-This app is meant to be a relatively simple means to send  Gmail from a Node js program.
+This app is meant to be a relatively simple means to send  Gmail from a Node.js program.
 In the future other capabilities could be developed.
 
-It can be called as a sub-process from another node process(your app)
-or directly on the command line.
-It can maintain configs for multiple identity's (gmail accounts)
+It can be called as a sub-process from another node process (your app)
+or directly from the command line.
+It can maintain configs for multiple identity's (Gmail accounts)
 
-NOTE: To use this app you will need to obtain a credentials file from google (see below).
+NOTE: To use this app you will need to obtain a credentials file from Google (see below).
 
 ## Command line options
 (On Windows hosts us a "/" instead of a "-" eg -c becomes /c)
 
 | Syntax               | Description
 | :---                 | :----   
-| `-c /path/to/config`              | Use an alternate config location<br> A folder named node-gmail-worker will be created at the location specified.<br> This option can be combined with all other options.        
-| `-a emailAddress`      | Add a new identity to config. <br> This will create a folder and an options.json file.<br> You can edit the options.json to your liking <br>then add your credentials.json that you get from Goolge<br> Can only be combined with -c option.
-| `-s '{json:string}'`| Send an email defined in json text. <br>This option is not working yet.
+| `-c /path/to/config`              | Use an alternate config location.<br> A folder named node-gmail-worker will be created at the location specified.<br> This option can be combined with all other options.        
+| `-a emailAddress`      | Add a new identity to config. <br> This will create a folder and an options.json file.<br> You can edit the options.json to your liking. <br>Then add your credentials.json that you get from Goolge.<br>Can only be combined with -c option.
+| `-s '{json:string}'`| Send an email defined in json text. <br>This option is not implemented yet.
 
 
 ## Working as a sub-process
@@ -25,8 +25,8 @@ You can read the test.js script to see an example of how to use node-gmail-worke
 
 * You will need to create an identity, either manually or with the -a option on the command line before running test.js
   * `node index.js -a YourEmailAddress`  
-  * copy your google credentials.json to the identity folder
-* then run test.js
+  * Copy your Google credentials.json to the identity folder
+* Then run test.js
   * `node test.js YourEmailAddress`
 
 
@@ -37,7 +37,7 @@ This process is a little involved but it's necessary to interact with the Google
 
 *  At the top of the page click on "Select a Project". This will bring up a dialog. In the top right hand corner click "New Project"
 * Enter a name for your project and then click "Create". In a few second you project will be created and you will be returned to the dashboard. If this is your first project it will be selected for you. If not make sure to select it at the top of the page  
-*  Now you need to enable the proper API's for this project. Click on "+ ENABLE APIS AND SERVICES".<br> On the next screen scroll down and click on the GMail card. <br>On the next screen click "ENABLE".
+*  Now you need to enable the proper API's for this project. Click on "+ ENABLE APIS AND SERVICES".<br> On the next screen scroll down and click on the Gmail card. <br>On the next screen click "ENABLE".
 * Next you need to setup a consent screen for your project. Near the top, on the right, click "CONFIGURE CONSENT SCREEN" <br>
 Here you will need to select the user type. Unless you have a GSuite account your only option will be "External". Select one and click "CREATE"
 

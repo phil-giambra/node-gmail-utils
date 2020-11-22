@@ -164,14 +164,8 @@ if ( _is_subprocess ){
 }
 
 
-// If modifying these scopes, after a token has been generated you will
+// If modifying these scopes after a token has been generated you will
 // need to delete the token so it can be regenerated
-/*const SCOPES = [
-    'https://mail.google.com/',
-    'https://www.googleapis.com/auth/gmail.modify',
-    'https://www.googleapis.com/auth/gmail.compose',
-    'https://www.googleapis.com/auth/gmail.send'
-]*/
 
 const SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
