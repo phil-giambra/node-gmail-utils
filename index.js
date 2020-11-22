@@ -2,21 +2,6 @@ const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
 
-// returns a string such as "2020-10-13" for the given seconds since epoch or the current day if secs is undefined
-function getDateNow(secs) {
-    let d
-    if (secs === undefined) { d = new Date() } else { d = new Date(secs) }
-    let datenow  = [  d.getFullYear(),  ('0' + (d.getMonth() + 1)).slice(-2),  ('0' + d.getDate()).slice(-2)].join('-');
-    return datenow
-}
-
-// returns a string such as "14:25" for the given seconds since epoch or the current time if secs is undefined
-function getTimeNow(secs) {
-    let d
-    if (secs === undefined) { d = new Date() } else { d = new Date(secs) }
-    let datenow  = [    ('0' + d.getHours() ).slice(-2),  ('0' + d.getMinutes()).slice(-2)].join(':');
-    return datenow
-}
 
 // check if we are a sub-process
 // this allows to setup for working as a sub-process
@@ -26,11 +11,9 @@ if (!process.send) { _is_subprocess = false }
 
 // check for cmd line options and setup the config location
 let altconfig = null
-
 let new_identity = null
-
 let args = process.argv
-console.log("cmd-args", args);
+//console.log("cmd-args", args);
 args.forEach((item, i) => {
     // use alternate config location
     if (item === "-c" || item === "/c") { altconfig = args[i+1]}
@@ -102,6 +85,7 @@ if ( !fs.existsSync( configbase ) ) {
 let IdList = []
 let ID = {}
 let _ids_ok = true
+let _tokens_ok = false
 
 if ( fs.existsSync( configbase +"/identities") ) {
     let filelist =  fs.readdirSync(configbase +"/identities")
@@ -109,7 +93,7 @@ if ( fs.existsSync( configbase +"/identities") ) {
     for (var i = 0; i < filelist.length; i++) {
         let id = filelist[i]
         ID[id] = {}
-        IdList.push({ identity:id, oauth:null, status:null })
+        IdList.push(id)
         if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/credentials.json" ) ) {
             ID[id].creds = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/credentials.json",'utf8') )
             ID[id].token_path = configbase +"/identities/"+filelist[i]+"/token.json"
@@ -152,40 +136,32 @@ if ( _ids_ok === false ) {
 }
 
 
-
-
-let _tokens_ok = false
-
-
-
-if (_is_subprocess){
+if ( _is_subprocess ){
     process.on('message', (packet) => {
-      console.log('Message from parent process', packet);
-      if (packet.type === "auth_reply") {
-          handleAuthReply(packet)
-      }
-      if (packet.type === "action") {
-          if ( _tokens_ok === true) {
-              handleActions(packet)
-          } else {
-              packet.type = "action_responce"
-              packet.status = "error"
-              process.send({type:"action_responce", value:"ready"})
+        console.log('Message from parent process', packet);
+          if (packet.type === "auth_reply") {
+              handleAuthReply(packet)
           }
+          if (packet.type === "action") {
+              if ( _tokens_ok === true) {
+                  handleActions(packet)
+              } else {
+                  //*** this needs to be handled in test.js
+                  packet.type = "action_responce"
+                  packet.status = "error"
+                  process.send(packet)
+              }
 
-      }
-      else if (packet.type === "exit") {
-          process.exit()
-      }
-      else {
-          console.log('Unknown type', packet);
-      }
-    });
+          }
+          else if (packet.type === "exit") {
+              process.exit()
+          }
+          else {
+              console.log('Unknown type', packet);
+          }
+      });
 
 }
-
-
-
 
 
 // If modifying these scopes, after a token has been generated you will
@@ -197,8 +173,7 @@ const SCOPES = [
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
-// check existance of token for each identity at startup
-// if missing get one
+// start check for existance of token for each identity
 if (IdList.length > 0){ testForToken(0) }
 
 function testForToken(pos) {
@@ -211,11 +186,9 @@ function testForToken(pos) {
         //authorize("philgiambra@gmail.com", sendMail)
         return
     }
-    let id = IdList[pos].identity
+    let id = IdList[pos]
     if (fs.existsSync(ID[id].token_path)){
         ID[id].token = JSON.parse( fs.readFileSync(ID[id].token_path,'utf8') )
-        //console.log(`Token for ${id} expires on ${getDateNow(ID[id].token.expiry_date)} at ${getTimeNow(ID[id].token.expiry_date)}`);
-        IdList[pos].status = "ok"
         testForToken(pos+1)
 
     } else {
@@ -248,9 +221,6 @@ function getNewToken(id,pos) {
     } else {
         // send request for auth code to main process
         process.send({type:"auth_requested", identity:id, pos:pos, url: authUrl })
-        //testForToken(pos+1)
-
-
     }
 
 }
@@ -356,37 +326,41 @@ function handleActions(packet) {
 
 async function sendMail(id, data, auth) {
     // You can use UTF-8 encoding for the subject using the method below.
- // You can also just use a plain string if you don't need anything fancy.
- const gmail = google.gmail({version: 'v1', auth:auth});
- const subject = data.subject;
- const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
- const messageParts = [
+    // You can also just use a plain string if you don't need anything fancy.
+    const gmail = google.gmail({version: 'v1', auth:auth});
+    const subject = data.subject;
+    const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
+    // replace any missing options from default options
+    if (!data.options) { data.options = {}  }
+    for (let opt in ID[id].options) {
+        if (!data.options[opt]) { data.options[opt] = ID[id].options[opt]  }
+    }
+    const messageParts = [
+        `From: ${data.options.dname} <${id}>`,
+        `To: ${data.toName} <${data.toAddr}>`,
+        'Content-Type: text/html; charset=utf-8',
+        'MIME-Version: 1.0',
+        `Subject: ${utf8Subject}`,
+        '',
+        `${data.options.pre_body}`,
+        `${data.body}`,
+        `${data.options.post_body}`,
+    ];
+    const message = messageParts.join('\n');
 
-   `From: ${ID[id].options.dname} <${id}>`,
-   `To: ${data.toName} <${data.toAddr}>`,
-   'Content-Type: text/html; charset=utf-8',
-   'MIME-Version: 1.0',
-   `Subject: ${utf8Subject}`,
-   '',
-   `${ID[id].options.pre_body}`,
-   `${data.body}`,
-   `${ID[id].options.post_body}`,
- ];
- const message = messageParts.join('\n');
+    // The body needs to be base64url encoded.
+    const encodedMessage = Buffer.from(message)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 
- // The body needs to be base64url encoded.
- const encodedMessage = Buffer.from(message)
-   .toString('base64')
-   .replace(/\+/g, '-')
-   .replace(/\//g, '_')
-   .replace(/=+$/, '');
-
- const res = await gmail.users.messages.send({
-   userId: 'me',
-   requestBody: {
-     raw: encodedMessage,
-   },
- });
- console.log("got responce from gmail",res.data);
- //return res.data;
+    const res = await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {
+            raw: encodedMessage,
+        },
+    });
+    console.log("got responce from gmail",res.data);
+    //return res.data;
 }
