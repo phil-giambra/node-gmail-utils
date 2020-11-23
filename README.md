@@ -8,7 +8,7 @@ It can be called as a sub-process from another node process (your app)
 or directly from the command line.
 It can maintain configs for multiple identity's (Gmail accounts)
 
-NOTE: To use this app you will need to obtain a credentials file from Google (see below).
+NOTE: To use this app you will need to obtain an OAuth 2.0 client ID file from Google (see below).
 
 ## Command line options
 (On Windows hosts us a "/" instead of a "-" eg -c becomes /c)

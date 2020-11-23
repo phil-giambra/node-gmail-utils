@@ -19,7 +19,10 @@ gmail.proc.on('message', (packet) => {
         // the sub-process is ready. Send a test email
         gmail.sendMail( user_id, gmail.test_email )
     }
-    else if (packet.type === "status" && packet.value === "offline") { gmail.active = false }
+    else if (packet.type === "status" && packet.value === "error") {
+         gmail.active = false
+         gmail.handleStatusErrors()
+     }
     else if (packet.type === "auth_requested") { gmail.handleAuth(packet) }
     else if (packet.type === "action_responce") {
         if (packet.status === "error"){
@@ -61,6 +64,10 @@ gmail.handleActionError = function(packet) {
 
 gmail.handleActionResponce = function(packet) {
     console.log("process action responce ", packet);
+
+}
+gmail.handleStatusErrors = function(packet) {
+    console.log("process status error  ", packet);
 
 }
 

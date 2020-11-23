@@ -3,16 +3,18 @@ const readline = require('readline');
 const {google} = require('googleapis');
 
 
-// check if we are a sub-process
-// this allows to setup for working as a sub-process
-// or as a main process directly on the command line
+// check if run as a sub-process
+
 let _is_subprocess = true
 if (!process.send) { _is_subprocess = false }
 
+let output
+let output_error = []
 // check for cmd line options and setup the config location
 let altconfig = null
 let new_identity = null
 let _list_ids = false
+let _send_mail = false
 let args = process.argv
 //console.log("cmd-args", args);
 args.forEach((item, i) => {
@@ -22,6 +24,8 @@ args.forEach((item, i) => {
     if (item === "-a" || item === "/a") { new_identity = args[i+1]}
     // list identities
     if (item === "-l" || item === "/l") { _list_ids = true }
+    // send mail object
+    if (item === "-s" || item === "/s") { _send_mail = true }
 });
 
 let osuser
@@ -64,7 +68,7 @@ function saveLocalConfig() {
 
 
 if ( !fs.existsSync( configbase ) ) {
-    console.log("Creating config folder", configbase);
+    //console.log("Creating config folder", configbase);
     fs.mkdirSync( configbase, { recursive: true } )
     saveLocalConfig()
 } else {
@@ -76,6 +80,12 @@ if ( !fs.existsSync( configbase ) ) {
     }
 
 }
+
+// setop message handling for sub-process
+if ( _is_subprocess ){
+    hookToMainProcess()
+}
+
 
 // Identities can be created with the -a option or setup manually by adding a subfolder to  {configbase}/identities"
 // The folder should be named as the users gmail or gsuite address and contain
@@ -91,58 +101,79 @@ let ID = {}
 let _ids_ok = true
 let _tokens_ok = false
 
-if ( fs.existsSync( configbase +"/identities") ) {
-    let filelist =  fs.readdirSync(configbase +"/identities")
-    if (filelist.length === 0) { _ids_ok = false }
-    for (var i = 0; i < filelist.length; i++) {
-        let id = filelist[i]
-        ID[id] = {}
-        IdList.push(id)
-        if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/credentials.json" ) ) {
-            ID[id].creds = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/credentials.json",'utf8') )
-            ID[id].token_path = configbase +"/identities/"+filelist[i]+"/token.json"
-
-        } else {
-            console.log(`***\nError loading client secret file: ${configbase}/identities/${filelist[i]}/credentials.json`);
-            console.log(`You must place Google API credentials at the above location\n***`);
-            _ids_ok = false
-        }
-        if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/options.json" ) ) {
-            if ( ID[id] ){
-                ID[id].options = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/options.json",'utf8') )
-            }
-
-        } else {
-            console.log(`***\nError loading options.json file: ${configbase}/identities/${filelist[i]}/options.json`);
-            console.log(`You must create the file options.json at the above location\n***`);
-            _ids_ok = false
-        }
-
-    }
-} else {
-    // create the identities folder if missing
-    fs.mkdirSync( configbase+"/identities", { recursive: true } )
-    _ids_ok = false
-}
-
 // check for new identity to add
 //*** should validate email here
 if (new_identity !== null) {
-    //console.log(ID);
-    if ( createIdentity(new_identity) ) { _ids_ok = false }
+    createIdentity(new_identity)
+    //if ( createIdentity(new_identity) ) { _ids_ok = false }
 }
 
+parseIdentities()
+
+
+// if any oAuth credentials.json or options.json are missing output an error and exit
 if ( _ids_ok === false ) {
-    console.log("There are invalid or missing google credentials");
-    if ( _is_subprocess === true ) {
-        process.send({type:"error", reason:"bad_credentials", msg:"Exiting due to invalid or missing google credentials" })
-    }
-    if ( _list_ids === true ) { listIdentities() }
+    output = { type:"status", value:"error",  errors:output_error }
+    if ( _list_ids === true ) { output =  listIdentities()  }
+    if (_is_subprocess) { process.send(output) } else { console.log( JSON.stringify(output,null,4) ) }
+
     process.exit()
 }
 
 
-if ( _is_subprocess ){
+// If modifying these scopes after a token has been generated you will
+// need to delete the token so it can be regenerated
+
+const SCOPES = [
+    'https://www.googleapis.com/auth/gmail.send'
+]
+
+// start check for existance of token for each identity
+if (IdList.length > 0){ testForToken(0) }
+
+
+function parseIdentities(){
+    if ( fs.existsSync( configbase +"/identities") ) {
+        let filelist =  fs.readdirSync(configbase +"/identities")
+        if (filelist.length === 0) { _ids_ok = false }
+        for (var i = 0; i < filelist.length; i++) {
+            let id = filelist[i]
+            ID[id] = {}
+            IdList.push(id)
+            if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/credentials.json" ) ) {
+                ID[id].creds = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/credentials.json",'utf8') )
+                ID[id].token_path = configbase +"/identities/"+filelist[i]+"/token.json"
+
+            } else {
+                output_error.push(`Error loading client secret file: ${configbase}/identities/${filelist[i]}/credentials.json`)
+                output_error.push(`You must place Google OAuth 2.0 client ID credentials at the above location`)
+                //console.log(`***\nError loading client secret file: ${configbase}/identities/${filelist[i]}/credentials.json`);
+                //console.log(`You must place Google OAuth 2.0 client ID credentials at the above location\n***`);
+                _ids_ok = false
+            }
+            if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/options.json" ) ) {
+                if ( ID[id] ){
+                    ID[id].options = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/options.json",'utf8') )
+                }
+
+            } else {
+                output_error.push(`***\nError loading options.json file: ${configbase}/identities/${filelist[i]}/options.json`);
+                output_error.push(`You must create the file options.json at the above location\n***`);
+                //console.log(`***\nError loading options.json file: ${configbase}/identities/${filelist[i]}/options.json`);
+                //console.log(`You must create the file options.json at the above location\n***`);
+                _ids_ok = false
+            }
+
+        }
+    } else {
+        // create the identities folder if missing
+        fs.mkdirSync( configbase+"/identities", { recursive: true } )
+        _ids_ok = false
+    }
+
+}
+
+function hookToMainProcess() {
     process.on('message', (packet) => {
         console.log('Message from parent process', packet);
           if (packet.type === "auth_reply") {
@@ -166,29 +197,16 @@ if ( _is_subprocess ){
               console.log('Unknown type', packet);
           }
       });
-
 }
 
-
-// If modifying these scopes after a token has been generated you will
-// need to delete the token so it can be regenerated
-
-const SCOPES = [
-    'https://www.googleapis.com/auth/gmail.send'
-]
-
-// start check for existance of token for each identity
-if (IdList.length > 0){ testForToken(0) }
 
 function testForToken(pos) {
     if (pos > IdList.length - 1 ) {
         // all done checking tokens ready for normal operations
-        console.log("Token check complete, ready for actions");
         _tokens_ok = true
-        if (_is_subprocess) { process.send({type:"status", value:"ready"}) }
-        if ( _list_ids === true ) { listIdentities()}
-        // testing
-        //authorize("philgiambra@gmail.com", sendMail)
+        let output = {type:"status", value:"ready"}
+        if ( _list_ids === true ) { output = listIdentities()  }
+        if (_is_subprocess) { process.send(packet) } else { console.log( JSON.stringify(output,null,4) ) }
         return
     }
     let id = IdList[pos]
@@ -292,8 +310,22 @@ function handleActions(packet) {
     }
 }
 
+// returns a array of Identities and their status
 function listIdentities() {
-    console.table(ID)
+    //onsole.table(ID)
+    let list = []
+    IdList.forEach((item, i) => {
+        list.push({id:item})
+        list[i].creds = "missing"
+        if (ID[item].creds) { list[i].creds = "ok" }
+        list[i].options = "missing"
+        if (ID[item].options) { list[i].options = "ok" }
+        list[i].token = "missing"
+        if (_ids_ok === false) { list[i].token = "unknown" }
+        if (ID[item].token) { list[i].token = "ok" }
+    });
+
+    return list
 }
 
 async function sendMail(id, packet, auth) {
