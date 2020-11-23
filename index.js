@@ -12,13 +12,16 @@ if (!process.send) { _is_subprocess = false }
 // check for cmd line options and setup the config location
 let altconfig = null
 let new_identity = null
+let _list_ids = false
 let args = process.argv
-console.log("cmd-args", args);
+//console.log("cmd-args", args);
 args.forEach((item, i) => {
     // use alternate config location
     if (item === "-c" || item === "/c") { altconfig = args[i+1]}
     // add new identity
     if (item === "-a" || item === "/a") { new_identity = args[i+1]}
+    // list identities
+    if (item === "-l" || item === "/l") { _list_ids = true }
 });
 
 let osuser
@@ -33,7 +36,7 @@ if (process.platform === 'win32') {
         configbase = process.env.APPDATA.replace(/\\/g, "/")
     } else {
         configbase = altconfig.replace(/\\/g, "/")
-        console.log("using alt config");
+        //console.log("using alt config");
     }
 
 }
@@ -43,17 +46,18 @@ else if (process.platform === 'linux') {
         configbase = process.env.HOME + "/" +".config"
     } else {
         configbase = altconfig
-        console.log("using alt config");
+        //console.log("using alt config");
     }
 
 }
 
 if ( configbase.endsWith("/") ) { configbase += "node-gmail-worker" } else { configbase += "/node-gmail-worker"}
-console.log( osuser , configbase);
+//console.log( osuser , configbase);
 
 
 // setup config and identities
-let LocalConfig = { /*this may not be needed*/}
+// LocalConfig is not used but here for possible future use
+let LocalConfig = {}
 function saveLocalConfig() {
     fs.writeFileSync(configbase + "/config.json", JSON.stringify(LocalConfig,null,4) )
 }
@@ -65,7 +69,7 @@ if ( !fs.existsSync( configbase ) ) {
     saveLocalConfig()
 } else {
     if (fs.existsSync(configbase + "/config.json")) {
-        console.log('Loading config.json.');
+        //console.log('Loading config.json.');
         LocalConfig = JSON.parse( fs.readFileSync(configbase + "/config.json",'utf8') )
     } else {
         saveLocalConfig()
@@ -73,15 +77,15 @@ if ( !fs.existsSync( configbase ) ) {
 
 }
 
+// Identities can be created with the -a option or setup manually by adding a subfolder to  {configbase}/identities"
+// The folder should be named as the users gmail or gsuite address and contain
+// an OAuth 2.0 Client ID file named "credentials.json" (see README.md on how to get this file from google ).
+// Also an "options.json" file for this identity (see createIdentity for the default_options).
+// The script will look for any existing identities and add them to ID
+// If no identities exist or any are misconfigured (missing credentials, options or token)
+// the script will not process any send actions and exit
 
 
-
-// Identities are setup manually by adding a subfolder to  {configbase}/identities"
-// the folder should be named as the users gmail or gsuite address
-// inside this folder should be a OAuth 2.0 Client ID credentials.json (see README.md on how to get this file from google )
-// and an options.json file for this identity
-// we will look for any existing identities and add them to ID
-// if no identities exist or any are missing credentials or options we will notify the user and exit
 let IdList = []
 let ID = {}
 let _ids_ok = true
@@ -99,8 +103,8 @@ if ( fs.existsSync( configbase +"/identities") ) {
             ID[id].token_path = configbase +"/identities/"+filelist[i]+"/token.json"
 
         } else {
-            console.log(`Error loading client secret file: ${configbase}/identities/${filelist[i]}/credentials.json`);
-            console.log(`You must place Google API credentials at the above location`);
+            console.log(`***\nError loading client secret file: ${configbase}/identities/${filelist[i]}/credentials.json`);
+            console.log(`You must place Google API credentials at the above location\n***`);
             _ids_ok = false
         }
         if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/options.json" ) ) {
@@ -109,13 +113,14 @@ if ( fs.existsSync( configbase +"/identities") ) {
             }
 
         } else {
-            console.log(`Error loading options.json file: ${configbase}/identities/${filelist[i]}/options.json`);
-            console.log(`You must create the file options.json at the above location`);
+            console.log(`***\nError loading options.json file: ${configbase}/identities/${filelist[i]}/options.json`);
+            console.log(`You must create the file options.json at the above location\n***`);
             _ids_ok = false
         }
 
     }
 } else {
+    // create the identities folder if missing
     fs.mkdirSync( configbase+"/identities", { recursive: true } )
     _ids_ok = false
 }
@@ -128,10 +133,11 @@ if (new_identity !== null) {
 }
 
 if ( _ids_ok === false ) {
-    console.log("Exiting due to invalid or missing google credentials");
+    console.log("There are invalid or missing google credentials");
     if ( _is_subprocess === true ) {
         process.send({type:"error", reason:"bad_credentials", msg:"Exiting due to invalid or missing google credentials" })
     }
+    if ( _list_ids === true ) { listIdentities() }
     process.exit()
 }
 
@@ -180,6 +186,7 @@ function testForToken(pos) {
         console.log("Token check complete, ready for actions");
         _tokens_ok = true
         if (_is_subprocess) { process.send({type:"status", value:"ready"}) }
+        if ( _list_ids === true ) { listIdentities()}
         // testing
         //authorize("philgiambra@gmail.com", sendMail)
         return
@@ -244,55 +251,13 @@ function handleAuthReply(packet) {
 
 }
 
-function authorize(id, data, callback) {
+function authorize(id, packet, callback) {
     const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
     const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
     oAuth2Client.setCredentials(ID[id].token);
-    callback(id, data, oAuth2Client);
+    callback(id, packet, oAuth2Client);
 
 }
-
-
-
-/*
-function getNewToken(id, oAuth2Client, callback) {
-    const authUrl = oAuth2Client.generateAuthUrl({
-        access_type: 'offline',
-        scope: SCOPES,
-    });
-    let url_code
-    if ( _is_subprocess === false ) {
-        console.log(`Authorize token needed for ${id} open this url in a browser: \n ${authUrl}` );
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-        });
-        rl.question('Enter the code from that page here: ', (code) => {
-            rl.close();
-            url_code = code
-        });
-    } else {
-        // send request for auth code to main process
-        process.send({type:"auth_requested", identity:id, url: authUrl })
-        return callback(oAuth2Client, id, false);
-
-    }
-
-    oAuth2Client.getToken(url_code, (err, token) => {
-        if (err) return console.error(`Error retrieving access token for ${id}`, err);
-        oAuth2Client.setCredentials(token);
-        // Store the token to disk for later program executions
-        fs.writeFile(ID[id].token_path, JSON.stringify(token), (err) => {
-            if (err) return console.error(err);
-            console.log(`Token stored for ${id} at ${ID[id].token_path} `);
-        });
-        callback(oAuth2Client, id, true);
-    });
-
-}
-*/
-
-
 
 
 // create the folder and options.json for a new identity
@@ -323,14 +288,18 @@ function handleActions(packet) {
         return
     }
     if (packet.action === "send") {
-        authorize(id, packet.data , sendMail)
+        authorize(id, packet , sendMail)
     }
 }
 
+function listIdentities() {
+    console.table(ID)
+}
 
-async function sendMail(id, data, auth) {
+async function sendMail(id, packet, auth) {
     // You can use UTF-8 encoding for the subject using the method below.
     // You can also just use a plain string if you don't need anything fancy.
+    let data = packet.data
     const gmail = google.gmail({version: 'v1', auth:auth});
     const subject = data.subject;
     const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
@@ -365,6 +334,13 @@ async function sendMail(id, data, auth) {
             raw: encodedMessage,
         },
     });
-    console.log("got responce from gmail",res.data);
+    console.log("got responce from gmail",res); //res.data
+    if (_is_subprocess === true) {
+        packet.type = "action_responce"
+        packet.status = "done"
+        packet.res = res
+        // send the packet back to the main process
+        process.send(packet)
+    }
     //return res.data;
 }
