@@ -15,9 +15,9 @@ NOTE: To use this app you will need to obtain an OAuth 2.0 client ID file from G
 
 | Syntax               | Description
 | :---                 | :----   
-| `-c /path/to/config`              | Use an alternate config location.<br> A folder named node-gmail-worker will be created at the location specified.<br> This option can be combined with all other options.        
+| `-c /path/to/config`              | Use an alternate config location.<br> A folder named node-gmail-worker will be created at the location specified.<br> This option can be used with all other options.        
 | `-a emailAddress`      | Add a new identity to config. <br> This will create a folder named `emailAddress` and an options.json file within it.<br> You can edit the options.json to your liking. <br>You need to put your credentials.json from Google into the folder .<br>Can only be combined with -c option.
-| `-s '{json:string}'`| Send an email defined in json text. <br>This option is not implemented yet.
+| `-j '{"json":"string"}'`| Preform a job defined in json text (send an email). <br> This option is not implemented yet.
 
 
 ## Using as a sub-process
