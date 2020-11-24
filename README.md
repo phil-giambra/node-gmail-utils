@@ -35,11 +35,11 @@ This process is a little involved but it's necessary to interact with the Google
 
 * First open a browser window here: https://console.developers.google.com/ . You may be greeted with consent screen if you have never used the Google Cloud Platform before.
 
-*  At the top of the page click on "Select a Project". This will bring up a dialog. In the top right hand corner click "New Project"
+*  At the top of the page click on "Select a Project". This will bring up a dialog, in it's top right corner click "New Project"
 * Enter a name for your project and then click "Create". In a few second you project will be created and you will be returned to the dashboard. If this is your first project it will be selected for you. If not make sure to select it at the top of the page  
-*  Now you need to enable the proper API's for this project. Click on "+ ENABLE APIS AND SERVICES".<br> On the next screen scroll down and click on the Gmail card. <br>On the next screen click "ENABLE".
-* Next you need to setup a consent screen for your project. Near the top, on the right, click "CONFIGURE CONSENT SCREEN" <br>
-Here you will need to select the user type. Unless you have a GSuite account your only option will be "External". Select one and click "CREATE"
+*  Now you need to enable the proper API's for this project.<br> Click on "+ ENABLE APIS AND SERVICES".<br> On the next screen scroll down and click on the Gmail card. <br>On the next screen click "ENABLE".
+* Next you need to setup a consent screen for your project. <br>Near the top, on the right, click "CONFIGURE CONSENT SCREEN" <br>
+Here you will need to select the user type. <br>Unless you have a GSuite account your only option will be "External". <br>Select one and click "CREATE"
 
 * You only need to fill out the required inputs on this screen
   * Under App Info (App name & User support email)

@@ -8,6 +8,9 @@ const {google} = require('googleapis');
 let _is_subprocess = true
 if (!process.send) { _is_subprocess = false }
 
+//*** add check for using as a module
+// https://stackoverflow.com/questions/6398196/detect-if-called-through-require-or-directly-by-command-line
+
 let output
 let output_error = []
 // check for cmd line options and setup the config location
