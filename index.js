@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
@@ -10,14 +12,20 @@ if (!process.send) { _is_subprocess = false }
 
 //*** add check for using as a module
 // https://stackoverflow.com/questions/6398196/detect-if-called-through-require-or-directly-by-command-line
+let _is_module = true
+if (require.main === module) { _is_module = false }
+console.log(`module: `, _is_module);
 
+// setup the outputs
 let output
 let output_error = []
+
 // check for cmd line options and setup the config location
 let altconfig = null
 let new_identity = null
 let _list_ids = false
-let _send_mail = false
+let _do_job = false
+let job_text = null
 let args = process.argv
 //console.log("cmd-args", args);
 args.forEach((item, i) => {
@@ -28,7 +36,7 @@ args.forEach((item, i) => {
     // list identities
     if (item === "-l" || item === "/l") { _list_ids = true }
     // send mail object
-    if (item === "-s" || item === "/s") { _send_mail = true }
+    if (item === "-j" || item === "/j") { _do_job = true ; job_text = args[i+1] }
 });
 
 let osuser
@@ -96,8 +104,10 @@ if ( _is_subprocess ){
 // Also an "options.json" file for this identity (see createIdentity for the default_options).
 // The script will look for any existing identities and add them to ID
 // If no identities exist or any are misconfigured (missing credentials, options or token)
-// the script will not process any send actions and exit
+// the script will not process any jobs and exit
 
+// If the scoipes change your token will need to be deleted so it can be regenerated
+const GmailScopes = ['https://www.googleapis.com/auth/gmail.send']
 
 let IdList = []
 let ID = {}
@@ -107,8 +117,7 @@ let _tokens_ok = false
 // check for new identity to add
 //*** should validate email here
 if (new_identity !== null) {
-    createIdentity(new_identity)
-    //if ( createIdentity(new_identity) ) { _ids_ok = false }
+    createIdentity(new_identity.toLowercase())
 }
 
 parseIdentities()
@@ -124,15 +133,23 @@ if ( _ids_ok === false ) {
 }
 
 
-// If modifying these scopes after a token has been generated you will
-// need to delete the token so it can be regenerated
 
-const SCOPES = [
-    'https://www.googleapis.com/auth/gmail.send'
-]
 
 // start check for existance of token for each identity
 if (IdList.length > 0){ testForToken(0) }
+
+
+if ( _do_job ) {
+    // try to parse the json
+    try {
+        JSON.parse(job_text)
+    } catch (e) {
+        console.log("Error parsing json string for job");
+    } finally {
+
+    }
+}
+
 
 
 function parseIdentities(){
@@ -182,12 +199,12 @@ function hookToMainProcess() {
           if (packet.type === "auth_reply") {
               handleAuthReply(packet)
           }
-          if (packet.type === "action") {
+          if (packet.type === "job") {
               if ( _tokens_ok === true) {
-                  handleActions(packet)
+                  handleJobs(packet)
               } else {
                   //*** this needs to be handled in test.js
-                  packet.type = "action_responce"
+                  packet.type = "job_responce"
                   packet.status = "error"
                   process.send(packet)
               }
@@ -209,7 +226,7 @@ function testForToken(pos) {
         _tokens_ok = true
         let output = {type:"status", value:"ready"}
         if ( _list_ids === true ) { output = listIdentities()  }
-        if (_is_subprocess) { process.send(packet) } else { console.log( JSON.stringify(output,null,4) ) }
+        if (_is_subprocess) { process.send(output) } else { console.log( JSON.stringify(output,null,4) ) }
         return
     }
     let id = IdList[pos]
@@ -230,7 +247,7 @@ function getNewToken(id,pos) {
     const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
     const authUrl = oAuth2Client.generateAuthUrl({
         access_type: 'offline',
-        scope: SCOPES,
+        scope: GmailScopes,
     });
     ID[id].oauth = oAuth2Client
     if ( _is_subprocess === false ) {
@@ -296,19 +313,19 @@ function createIdentity(id) {
 }
 
 
-function handleActions(packet) {
-    console.log("Processing Action ", packet);
+function handleJobs(packet) {
+    console.log("Processing job ", packet);
     let id = packet.identity
     if (!ID[id]) {
-        console.log("invalid ID action canceled" );
+        console.log("invalid ID job canceled" );
         if (_is_subprocess) {
-            packet.type = "action_responce"
+            packet.type = "job_responce"
             packet.status = "error"
             process.send(packet)
         }
         return
     }
-    if (packet.action === "send") {
+    if (packet.job === "send") {
         authorize(id, packet , sendMail)
     }
 }
@@ -371,7 +388,7 @@ async function sendMail(id, packet, auth) {
     });
     console.log("got responce from gmail",res); //res.data
     if (_is_subprocess === true) {
-        packet.type = "action_responce"
+        packet.type = "job_responce"
         packet.status = "done"
         packet.res = res
         // send the packet back to the main process

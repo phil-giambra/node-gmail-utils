@@ -24,11 +24,11 @@ gmail.proc.on('message', (packet) => {
          gmail.handleStatusErrors()
      }
     else if (packet.type === "auth_requested") { gmail.handleAuth(packet) }
-    else if (packet.type === "action_responce") {
+    else if (packet.type === "job_responce") {
         if (packet.status === "error"){
-            gmail.handleActionError(packet)
+            gmail.handleJobError(packet)
         } else {
-            gmail.handleActionResponce(packet)
+            gmail.handleJobResponce(packet)
         }
 
     }
@@ -58,12 +58,12 @@ gmail.handleAuth = function(packet) {
     });
 }
 
-gmail.handleActionError = function(packet) {
-    console.log("Error executing action ", packet);
+gmail.handleJobError = function(packet) {
+    console.log("Error executing job ", packet);
 }
 
-gmail.handleActionResponce = function(packet) {
-    console.log("process action responce ", packet);
+gmail.handleJobResponce = function(packet) {
+    console.log("process job responce ", packet);
 
 }
 gmail.handleStatusErrors = function(packet) {
@@ -72,12 +72,12 @@ gmail.handleStatusErrors = function(packet) {
 }
 
 // use this to send an email
-// the packet that is sent to the sub-process will be returned with "type" changed to "action_responce"
+// the packet that is sent to the sub-process will be returned with "type" changed to "job_responce"
 // and a "status" property of "done" or "error", but otherwise unaltered.
-// So you can add other info (uuid, timestamp, whatever) and it will be available in handleActionResponce & handleActionError
+// So you can add other info (uuid, timestamp, whatever) and it will be available in handleJobResponce & handleJobError
 gmail.sendMail = function( id, email) {
     if (gmail.active === true) {
-        let packet = { type:"action", action:"send", identity:id, data:email }
+        let packet = { type:"job", job:"send", identity:id, data:email }
         gmail.proc.send(packet);
     } else {
         // handle trying to send before sub-process is ready
