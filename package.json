@@ -10,5 +10,16 @@
   "scripts": {
     "build": "",
     "start": "node ."
+  },
+  "keywords": [
+    "gmail",
+    "send",
+    "google",
+    "api"
+  ],
+  "author": "Phil Giambra, <philgiambra@gmail.com> (https://github.com/phil-giambra/node-gmail-worker)",
+  "license": "MIT",
+  "bin": {
+    "ngworker": "./index.js"
   }
 }
