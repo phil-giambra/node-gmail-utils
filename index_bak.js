@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
-
+const readline = require('readline');
 const {google} = require('googleapis');
 
 
@@ -36,14 +36,7 @@ args.forEach((item, i) => {
     // add new identity
     if (item === "-n" || item === "/n") { new_identity = args[i+1]}
     // authorize an identity
-    if (item === "-a" || item === "/a") {
-        authInfo.needed = true ;
-        authInfo.id = args[i+1];
-        if (args[i+2]) {
-            console.log("debug setting authInfo.key value");
-            authInfo.key = args[i+2];}
-        }
-
+    if (item === "-a" || item === "/a") { authInfo.needed = true ;  authInfo.id = args[i+1]; authInfo.key = args[i+2];}
     // list identities
     if (item === "-l" || item === "/l") { _list_ids = true }
     // send mail object
@@ -103,6 +96,14 @@ if ( !fs.existsSync( configbase ) ) {
 
 }
 
+// setop message handling for sub-process
+if ( _is_subprocess ){
+    hookToMainProcess()
+}
+
+if ( _is_module ){
+    initModule()
+}
 
 // Identities can be created with the -n option or setup manually by adding a subfolder to  {configbase}/identities"
 // The folder should be named as the users gmail or gsuite address and contain
@@ -115,59 +116,88 @@ if ( !fs.existsSync( configbase ) ) {
 // If the scopes change your token will need to be deleted so it can be regenerated
 const GmailScopes = ['https://www.googleapis.com/auth/gmail.send']
 
+let IdList = []
 let ID = {}
-
-
-// setup the ID object
-parseIdentities()
-
-
-//-----------------------------COMMAND LINE----------------------------------------
-function cliOut(packet) {
-    console.log(JSON.stringify(packet,null,4));
-    setTimeout(function(){process.exit()},2000)
-    //process.exit()
-}
+let _ids_ok = true
+let _tokens_ok = false
 
 // check for new identity to add
+//*** should validate email here
 if (new_identity !== null) {
     createIdentity(new_identity.toLowerCase())
 }
 
-// check for auth requests
-if (authInfo.needed === true) {
-    handleAuthRequest(authInfo)
+parseIdentities()
+
+
+// if any oAuth credentials.json or options.json are missing output an error and exit
+if ( _ids_ok === false ) {
+    output = { type:"status", value:"error",  errors:output_error }
+    if ( _list_ids === true ) { output =  listIdentities()  }
+    if (_is_subprocess) { process.send(output) } else { console.log( JSON.stringify(output,null,4) ) }
+
+    process.exit()
 }
 
-if (_list_ids) {
-    cliOut(listIdentities())
-}
 
 
-// execute a job if requested from the command line
+
+// start check for existance of token for each identity
+if (IdList.length > 0){ testForToken(0) }
+
+
 if ( _do_job ) {
     // try to parse the json
     try {
-        let jobJson = JSON.parse(job_text)
+        JSON.parse(job_text)
     } catch (e) {
-        let output = { type:"job", status:"error", errors:[] }
-        output.errors.push("Error parsing json string for job");
-        cliOut(output)
-        return
+        console.log("Error parsing json string for job");
+    } finally {
+
     }
-    // json is good try to handle the job
-    handleJobs(jobJson)
 }
 
-//-----------------------------SUB-PROCESS & MODULE---------------------------------------
 
-// setop message handling for sub-process
-if ( _is_subprocess ){
-    hookToMainProcess()
-}
+// this will check
+function parseIdentities(){
+    if ( fs.existsSync( configbase +"/identities") ) {
+        let filelist =  fs.readdirSync(configbase +"/identities")
+        if (filelist.length === 0) { _ids_ok = false }
+        for (var i = 0; i < filelist.length; i++) {
+            let id = filelist[i]
+            ID[id] = {}
+            IdList.push(id)
+            if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/credentials.json" ) ) {
+                ID[id].creds = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/credentials.json",'utf8') )
+                ID[id].token_path = configbase +"/identities/"+filelist[i]+"/token.json"
 
-if ( _is_module ){
-    initModule()
+            } else {
+                output_error.push(`Error loading client secret file: ${configbase}/identities/${filelist[i]}/credentials.json`)
+                output_error.push(`You must place Google OAuth 2.0 client ID credentials at the above location`)
+                //console.log(`***\nError loading client secret file: ${configbase}/identities/${filelist[i]}/credentials.json`);
+                //console.log(`You must place Google OAuth 2.0 client ID credentials at the above location\n***`);
+                _ids_ok = false
+            }
+            if ( fs.existsSync( configbase +"/identities/"+filelist[i]+"/options.json" ) ) {
+                if ( ID[id] ){
+                    ID[id].options = JSON.parse( fs.readFileSync(configbase +"/identities/"+filelist[i]+"/options.json",'utf8') )
+                }
+
+            } else {
+                output_error.push(`***\nError loading options.json file: ${configbase}/identities/${filelist[i]}/options.json`);
+                output_error.push(`You must create the file options.json at the above location\n***`);
+                //console.log(`***\nError loading options.json file: ${configbase}/identities/${filelist[i]}/options.json`);
+                //console.log(`You must create the file options.json at the above location\n***`);
+                _ids_ok = false
+            }
+
+        }
+    } else {
+        // create the identities folder if missing
+        fs.mkdirSync( configbase+"/identities", { recursive: true } )
+        _ids_ok = false
+    }
+
 }
 
 function hookToMainProcess() {
@@ -206,175 +236,107 @@ function initModule() {
     class ModEmitter extends EventEmitter {}
 
     mEmitter = new ModEmitter();
-    exports.auth = handleAuthRequest;
+    exports.auth = handleAuthReply;
     exports.create = createIdentity;
     exports.doJob = handleJobs;
     exports.list = listIdentities;
     exports.msg = mEmitter;
 
+    /*
+    mEmitter.on('event', () => {
+        console.log('an event occurred!');
+    });
+    mEmitter.emit('event');
+    */
     console.log("NGW Module has been initiated");
 
 }
 
+function testForToken(pos) {
+    if (pos > IdList.length - 1 ) {
+        // all done checking tokens ready for normal operations
+        _tokens_ok = true
+        let output = {type:"status", value:"ready"}
+        if ( _list_ids === true ) { output = listIdentities()  }
+        if (_is_subprocess) { process.send(output) }
+        else if ( _is_module  ) {
+            mEmitter.emit("status", output)
+            setTimeout(function(){
+                console.log("emmiting");
+                mEmitter.emit("status", output)
+            },2000)
 
-//------------------------------------COMMON FUNCTIONS----------------------------------------------
-
-// this will check for each part of an entity and create or re-create it's entry in ID
-function registerIdentity(id) {
-    ID[id] = {}
-    ID[id].token_path = configbase +"/identities/"+id+"/token.json"
-    if ( fs.existsSync( configbase +"/identities/"+id+"/credentials.json" ) ) {
-        ID[id].creds = JSON.parse( fs.readFileSync(configbase +"/identities/"+id+"/credentials.json",'utf8') )
-
-    }
-    if ( fs.existsSync( configbase +"/identities/"+id+"/options.json" ) ) {
-        ID[id].options = JSON.parse( fs.readFileSync(configbase +"/identities/"+id+"/options.json",'utf8') )
-    }
-    if (fs.existsSync(ID[id].token_path)){
-        ID[id].token = JSON.parse( fs.readFileSync(ID[id].token_path,'utf8') )
-    }
-
-
-}
-
-// this will check for the idetities folder and register any identities it contains
-function parseIdentities(){
-    if ( fs.existsSync( configbase +"/identities") ) {
-        let idlist =  fs.readdirSync(configbase +"/identities")
-        if (idlist.length === 0) { _ids_ok = false }
-        for (var i = 0; i < idlist.length; i++) {
-            let id = idlist[i]
-            registerIdentity(id)
         }
-    } else {
-        // create the identities folder if missing
-        fs.mkdirSync( configbase+"/identities", { recursive: true } )
-    }
-
-}
-
-// returns a array of Identities and their status
-function listIdentities() {
-    let list = []
-    for (let id in ID) {
-        list.push({})
-        let i = list.length - 1
-        list[i].id = id
-        list[i].creds = "missing"
-        if (ID[id].creds) { list[i].creds = "ok" }
-        list[i].options = "missing"
-        if (ID[id].options) { list[i].options = "ok" }
-        list[i].token = "missing"
-        if (ID[id].token) { list[i].token = "ok" }
-
-    }
-
-
-    return list
-}
-
-
-
-function handleAuthRequest(packet) {
-    let id = packet.id;
-    if (packet.key) {
-        // we have a key get a token
-        getAuthToken(packet)
-    } else {
-        // no key so get the auth url
-        getAuthUrl(packet)
-    }
-}
-
-// try to use credentials.json to create an authUrl
-function getAuthUrl(packet) {
-    let id = packet.id;
-    packet.errors = []
-    try {
-        const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
-        const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-        packet.authUrl = oAuth2Client.generateAuthUrl({
-            access_type: 'offline',
-            scope: GmailScopes,
-        });
-    } catch (e) {
-        packet.errors.push("Error creating oauth client");
-        if (ID[id].creds) { packet.errors.push("Invalid credentials.json"); }
-        else  { packet.errors.push("missing credentials.json"); }
-        packet.status = "error"
-
-        // setup error responce
-    } finally {
-        // return the url to the caller
-        if (_is_subprocess) {
-            process.send(packet)
-        }
-        else if (_is_module) { // may need to be an mEmitter.emit
-            return packet
-        } else {
-            console.log(packet);
-            process.exit()
-        }
-    }
-
-
-
-}
-
-
-// use a key provided by the user to create and save an auth token
-function getAuthToken(packet) {
-    let id = packet.identity
-    let key = packet.key
-    function sendResponce(){
-        if (_is_subprocess) {
-            process.send(packet)
-        }
-        else if (_is_module) { // may need to be an mEmitter.emit
-            return packet
-        } else {
-            console.log(packet);
-            process.exit()
-        }
-    }
-
-    try {
-        const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
-        const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-    } catch (e) {
-        packet.errors.push("Error creating oauth client");
-        if (ID[id].creds) { packet.errors.push("Invalid credentials.json"); }
-        else  { packet.errors.push("missing credentials.json"); }
-        packet.status = "error"
-        sendResponce()
+        else { console.log( JSON.stringify(output,null,4) ) }
         return
     }
+    let id = IdList[pos]
+    if (fs.existsSync(ID[id].token_path)){
+        ID[id].token = JSON.parse( fs.readFileSync(ID[id].token_path,'utf8') )
+        testForToken(pos+1)
 
-    oAuth2Client.getToken(key, (err, token) => {
-        if (err) {
-            return console.error(`Error retrieving access token for ${id}`, err);
-        } else {
-            oAuth2Client.setCredentials(token);
-            // Store the token to disk for later program executions
-            fs.writeFile(ID[id].token_path, JSON.stringify(token), (err) => {
-                if (err) {
-                    return console.error(err);
-                } else {
-                    // token is good and saved
-                    registerIdentity(id)
-                    packet.status = "done"
-                    sendResponce()
+    } else {
+        //missing token request one
+        console.log("missing token requesting one");
+        getNewToken(id,pos)
+    }
+}
 
-                }
+function getNewToken(id,pos) {
+    // first create an oauth client
+    const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    const authUrl = oAuth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: GmailScopes,
+    });
+    ID[id].oauth = oAuth2Client
+    if ( _is_subprocess === false ) {
+        console.log(`Authorize token needed for ${id} open this url in a browser: \n ${authUrl}` );
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+        });
+        rl.question('Enter the code from that page here: ', (code) => {
+            rl.close();
+            handleAuthReply({type:"auth_reply", identity:id, pos:pos, code: code })
+        });
 
-            });
-        }
+    } else {
+        // send request for auth code to main process
+        process.send({type:"auth_requested", identity:id, pos:pos, url: authUrl })
+    }
+
+}
+
+function handleAuthReply(packet) {
+    let id = packet.identity
+    let pos = packet.pos
+    let oAuth2Client = ID[id].oauth
+
+    oAuth2Client.getToken(packet.code, (err, token) => {
+        if (err) return console.error(`Error retrieving access token for ${id}`, err);
+        oAuth2Client.setCredentials(token);
+        // Store the token to disk for later program executions
+        fs.writeFile(ID[id].token_path, JSON.stringify(token), (err) => {
+            if (err) return console.error(err);
+            console.log(`Token stored for ${id} at ${ID[id].token_path} `);
+            // ok now check the token again
+            testForToken(pos)
+        });
+
     });
 
 
 }
 
+function authorize(id, packet, callback) {
+    const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    oAuth2Client.setCredentials(ID[id].token);
+    callback(id, packet, oAuth2Client);
 
+}
 
 
 
@@ -383,8 +345,6 @@ function emailValid(id){
     return true
 }
 // create the folder and options.json for a new identity
-// This is a syncronus operation so as a module it will directly
-// return the output instead of emitting an event
 function createIdentity(id) {
     let output = {type:"create_identity", status:"done" , errors:[], results:[] }
     if (ID[id]){
@@ -407,7 +367,6 @@ function createIdentity(id) {
         output.results.push(`${configbase}/identities/${id}/credentials.json`)
 
     }
-    registerIdentity(id)
     if (_is_subprocess) {
         process.send(output)
     }
@@ -437,16 +396,23 @@ function handleJobs(packet) {
     }
 }
 
+// returns a array of Identities and their status
+function listIdentities() {
+    //onsole.table(ID)
+    let list = []
+    IdList.forEach((item, i) => {
+        list.push({id:item})
+        list[i].creds = "missing"
+        if (ID[item].creds) { list[i].creds = "ok" }
+        list[i].options = "missing"
+        if (ID[item].options) { list[i].options = "ok" }
+        list[i].token = "missing"
+        if (_ids_ok === false) { list[i].token = "unknown" }
+        if (ID[item].token) { list[i].token = "ok" }
+    });
 
-// try to create oauth client to use for job
-function authorize(id, packet, callback) {
-    const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
-    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-    oAuth2Client.setCredentials(ID[id].token);
-    callback(id, packet, oAuth2Client);
-
+    return list
 }
-
 
 async function sendMail(id, packet, auth) {
     // You can use UTF-8 encoding for the subject using the method below.

@@ -16,15 +16,15 @@ NOTE: To use this app you will need to obtain an OAuth 2.0 client ID file from G
 | Syntax               | Description
 | :---                 | :----   
 | `-c /path/to/config`              | Use an alternate config location.<br> A folder named node-gmail-worker will be created at the location specified.<br> This option can be used with all other options.        
-| `-a emailAddress`      | Add a new identity to config. <br> This will create a folder named `emailAddress` and an options.json file within it.<br> You can edit the options.json to your liking. <br>You need to put your credentials.json from Google into the folder .<br>Can only be combined with -c option.
+| `-n emailAddress`      | Add a new identity to config. <br> This will create a folder named `emailAddress` and an options.json file within it.<br> You can edit the options.json to your liking. <br>You need to put your credentials.json from Google into the folder .<br>Can only be combined with -c option.
 | `-j '{"json":"string"}'`| Preform a job defined in json text (send an email). <br> This option is not implemented yet.
 
 
 ## Using as a sub-process
 You can read the test.js script to see an example of how to use node-gmail-worker from another app
 
-* You will need to create an identity, either manually or with the -a option on the command line before running test.js
-  * `node index.js -a YourEmailAddress`  
+* You will need to create an identity, either manually or with the -n option on the command line before running test.js
+  * `node index.js -n YourEmailAddress`  
   * Copy your Google credentials.json to the identity folder
 * Then run test.js
   * `node test.js YourEmailAddress`
