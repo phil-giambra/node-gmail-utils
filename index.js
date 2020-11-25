@@ -10,11 +10,10 @@ const {google} = require('googleapis');
 let _is_subprocess = true
 if (!process.send) { _is_subprocess = false }
 
-//*** add check for using as a module
-// https://stackoverflow.com/questions/6398196/detect-if-called-through-require-or-directly-by-command-line
+// check if run as a module
 let _is_module = true
 if (require.main === module) { _is_module = false }
-console.log(`module: `, _is_module);
+//console.log(`module: `, _is_module);
 
 // setup the outputs
 let output
@@ -106,7 +105,7 @@ if ( _is_subprocess ){
 // If no identities exist or any are misconfigured (missing credentials, options or token)
 // the script will not process any jobs and exit
 
-// If the scoipes change your token will need to be deleted so it can be regenerated
+// If the scopes change your token will need to be deleted so it can be regenerated
 const GmailScopes = ['https://www.googleapis.com/auth/gmail.send']
 
 let IdList = []
@@ -151,7 +150,7 @@ if ( _do_job ) {
 }
 
 
-
+// this will check
 function parseIdentities(){
     if ( fs.existsSync( configbase +"/identities") ) {
         let filelist =  fs.readdirSync(configbase +"/identities")
@@ -203,7 +202,7 @@ function hookToMainProcess() {
               if ( _tokens_ok === true) {
                   handleJobs(packet)
               } else {
-                  //*** this needs to be handled in test.js
+                  // any jobs that can't be completed are returned with error status
                   packet.type = "job_responce"
                   packet.status = "error"
                   process.send(packet)
@@ -214,7 +213,10 @@ function hookToMainProcess() {
               process.exit()
           }
           else {
-              console.log('Unknown type', packet);
+              // for unknow packet types send back as error packet
+              packet.type = "error"
+              process.send(packet)
+              //console.log('Unknown type', packet);
           }
       });
 }
