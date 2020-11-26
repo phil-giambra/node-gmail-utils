@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
 
+const fs = require('fs');
 const {google} = require('googleapis');
 
 
@@ -51,52 +51,17 @@ args.forEach((item, i) => {
 });
 
 
+// setup config location
 let osuser
 let configbase
-
-function setConfig(path = "default"){
-
-    if (path !== "default") {
-         configbase = path
-    } else {
-        if (process.platform === 'win32') {
-            osuser = process.env.USERNAME
-            // for windows we will convert to forward slashes like linux
-            if (altconfig === null) {
-                configbase = process.env.APPDATA.replace(/\\/g, "/")
-            } else {
-                configbase = altconfig.replace(/\\/g, "/")
-                //console.log("using alt config");
-            }
-
-        }
-        else if (process.platform === 'linux') {
-            if (altconfig === null) {
-                osuser = process.env.USER
-                configbase = process.env.HOME + "/" +".config"
-            } else {
-                configbase = altconfig
-                //console.log("using alt config");
-            }
-
-        }
-    }
-    if ( configbase.endsWith("/") ) { configbase += "node-gmail-worker" } else { configbase += "/node-gmail-worker"}
-    if ( !fs.existsSync( configbase ) ) {
-        //console.log("Creating config folder", configbase);
-        fs.mkdirSync( configbase, { recursive: true } )
-    }
-    parseIdentities()
-}
-
-
 //console.log(process.platform);
 //*** maybe add mac in here too
-//console.log( osuser , configbase);
 
 
-// setup config and identities
-// LocalConfig is not used but here for possible future use
+
+
+
+
 
 
 
@@ -124,8 +89,8 @@ if (!_is_module) {
 //-----------------------------COMMAND LINE----------------------------------------
 function cliOut(packet) {
     console.log(JSON.stringify(packet,null,4));
-    setTimeout(function(){process.exit()},2000)
-    //process.exit()
+    //setTimeout(function(){process.exit()},2000)
+    process.exit()
 }
 
 // check for new identity to add
@@ -171,20 +136,22 @@ if ( _is_module ){
 
 function hookToMainProcess() {
     process.on('message', (packet) => {
-        console.log('Message from parent process', packet);
-          if (packet.type === "auth_reply") {
-              handleAuthReply(packet)
+        //console.log('Message from parent process', packet);
+          if (packet.type === "auth") {
+              handleAuthRequest(packet)
           }
-          if (packet.type === "job") {
-              if ( _tokens_ok === true) {
-                  handleJobs(packet)
-              } else {
-                  // any jobs that can't be completed are returned with error status
-                  packet.type = "job_responce"
-                  packet.status = "error"
-                  process.send(packet)
-              }
-
+          else if (packet.type === "create") {
+              createIdentity(packet.id)
+          }
+          else if (packet.type === "list") {
+              packet.list = listIdentities()
+              process.send(packet)
+          }
+          else if (packet.type === "job") {
+              handleJobs(packet)
+          }
+          else if (packet.type === "config") {
+              setConfig(packet)
           }
           else if (packet.type === "exit") {
               process.exit()
@@ -207,8 +174,8 @@ function initModule() {
     mEmitter = new ModEmitter();
     exports.auth = handleAuthRequest;
     exports.create = createIdentity;
-    exports.doJob = handleJobs;
     exports.list = listIdentities;
+    exports.job = handleJobs;
     exports.config = setConfig;
     exports.msg = mEmitter;
 
@@ -218,6 +185,45 @@ function initModule() {
 
 
 //------------------------------------COMMON FUNCTIONS----------------------------------------------
+// set the configuration location
+function setConfig(path = "default"){
+
+    if (path !== "default") {
+         configbase = path
+         if (process.platform === 'win32') { configbase = path.replace(/\\/g, "/") }
+    } else {
+        if (process.platform === 'win32') {
+            osuser = process.env.USERNAME
+            // for windows we will convert to forward slashes like linux
+            if (altconfig === null) {
+                configbase = process.env.APPDATA.replace(/\\/g, "/")
+            } else {
+                configbase = altconfig.replace(/\\/g, "/")
+                //console.log("using alt config");
+            }
+
+        }
+        else if (process.platform === 'linux') {
+            if (altconfig === null) {
+                osuser = process.env.USER
+                configbase = process.env.HOME + "/" +".config"
+            } else {
+                configbase = altconfig
+                //console.log("using alt config");
+            }
+
+        }
+    }
+    if ( configbase.endsWith("/") ) { configbase += "node-gmail-worker" } else { configbase += "/node-gmail-worker"}
+    if ( !fs.existsSync( configbase ) ) {
+        //console.log("Creating config folder", configbase);
+        fs.mkdirSync( configbase, { recursive: true } )
+    }
+    //console.log( osuser , configbase);
+    parseIdentities()
+}
+
+
 
 // this will check for each part of an entity and create or re-create it's entry in ID
 function registerIdentity(id) {
@@ -268,8 +274,6 @@ function listIdentities() {
         if (ID[id].token) { list[i].token = "ok" }
 
     }
-
-
     return list
 }
 
@@ -277,12 +281,12 @@ function listIdentities() {
 
 function handleAuthRequest(packet) {
     let id = packet.id;
-    if (packet.key) {
-        // we have a key get a token
-        getAuthToken(packet)
-    } else {
+    if (packet.key == null) { // catch null and undefined
         // no key so get the auth url
         getAuthUrl(packet)
+    } else {
+        // we have a key get a token
+        getAuthToken(packet)
     }
 }
 
@@ -297,6 +301,7 @@ function getAuthUrl(packet) {
             access_type: 'offline',
             scope: GmailScopes,
         });
+        packet.status = "done"
     } catch (e) {
         packet.errors.push("Error creating oauth client");
         if (ID[id].creds) { packet.errors.push("Invalid credentials.json"); }
@@ -310,10 +315,10 @@ function getAuthUrl(packet) {
             process.send(packet)
         }
         else if (_is_module) { // may need to be an mEmitter.emit
-            return packet
+            mEmitter.emit("auth", packet)
+            //return packet
         } else {
-            console.log(packet);
-            process.exit()
+            cliOut(packet)
         }
     }
 
@@ -324,17 +329,18 @@ function getAuthUrl(packet) {
 
 // use a key provided by the user to create and save an auth token
 function getAuthToken(packet) {
-    let id = packet.identity
+    let id = packet.id
     let key = packet.key
-    function sendResponce(){
+    function sendResponce( _has_error = false){
+        if (_has_error) {packet.status = "error"}
         if (_is_subprocess) {
             process.send(packet)
         }
-        else if (_is_module) { // may need to be an mEmitter.emit
-            return packet
+        else if (_is_module) {
+            mEmitter.emit("auth", packet)
+            //return packet
         } else {
-            console.log(packet);
-            process.exit()
+            cliOut(packet)
         }
     }
 
@@ -345,20 +351,25 @@ function getAuthToken(packet) {
         packet.errors.push("Error creating oauth client");
         if (ID[id].creds) { packet.errors.push("Invalid credentials.json"); }
         else  { packet.errors.push("missing credentials.json"); }
-        packet.status = "error"
-        sendResponce()
+        sendResponce(true)
         return
     }
 
     oAuth2Client.getToken(key, (err, token) => {
         if (err) {
-            return console.error(`Error retrieving access token for ${id}`, err);
+            packet.errors.push(`Error retrieving access token for ${id}`);
+            packet.errors.push(err)
+            sendResponce(true)
+            return
         } else {
             oAuth2Client.setCredentials(token);
             // Store the token to disk for later program executions
             fs.writeFile(ID[id].token_path, JSON.stringify(token), (err) => {
                 if (err) {
-                    return console.error(err);
+                    packet.errors.push(`Error writing access token to file for ${id}`);
+                    packet.errors.push(err)
+                    sendResponce(true)
+                    return
                 } else {
                     // token is good and saved
                     registerIdentity(id)
@@ -382,11 +393,12 @@ function emailValid(id){
     //*** set this up ?? maybe put it in createIdentity
     return true
 }
+
 // create the folder and options.json for a new identity
 // This is a syncronus operation so as a module it will directly
 // return the output instead of emitting an event
 function createIdentity(id) {
-    let output = {type:"create_identity", status:"done" , errors:[], results:[] }
+    let output = {type:"create", status:"done" , id:id, errors:[], results:[] }
     if (ID[id]){
         output.status = "error"
         output.errors.push(`Create identity failed: Already exists ${id}  `)
@@ -397,7 +409,7 @@ function createIdentity(id) {
         output.status = "error"
         output.errors.push(`Create identity failed: Invalid email address ${id}  `)
     }
-    else {
+    else { //*** maybe need to catch write error here as well( or at least test for them)
         let path =  configbase+"/identities/"+id
         let default_options = { dname:id , pre_body:"", post_body:"", cc:[] }
         fs.mkdirSync( path , { } )
@@ -414,19 +426,19 @@ function createIdentity(id) {
     else if (_is_module) {
         return output
     } else {
-        console.log(output);
-        process.exit()
+        cliOut(output)
     }
 }
 
 
 function handleJobs(packet) {
-    console.log("Processing job ", packet);
-    let id = packet.identity
+    //console.log("Processing job ", packet);
+    let id = packet.id
+    packet.errors = []
     if (!ID[id]) {
-        console.log("invalid ID job canceled" );
+        console.log( );
         if (_is_subprocess) {
-            packet.type = "job_responce"
+            packet.errors.push("Invalid id: job canceled")
             packet.status = "error"
             process.send(packet)
         }
@@ -487,12 +499,15 @@ async function sendMail(id, packet, auth) {
         },
     });
     console.log("got responce from gmail",res); //res.data
+    packet.status = "done"
+    packet.res = res
     if (_is_subprocess === true) {
-        packet.type = "job_responce"
-        packet.status = "done"
-        packet.res = res
-        // send the packet back to the main process
         process.send(packet)
+    }
+    else if (_is_module) {
+        mEmitter.emit("job", packet)
+    } else {
+        cliOut(packet)
     }
     //return res.data;
 }
