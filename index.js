@@ -31,7 +31,7 @@ let job_text = null
 let args = process.argv
 //console.log("cmd-args", args);
 args.forEach((item, i) => {
-    // use alternate config location
+    // use alternate config location (cli and fork only)
     if (item === "-c" || item === "/c") { altconfig = args[i+1]}
     // add new identity
     if (item === "-n" || item === "/n") { new_identity = args[i+1]}
@@ -50,58 +50,55 @@ args.forEach((item, i) => {
     if (item === "-j" || item === "/j") { _do_job = true ; job_text = args[i+1] }
 });
 
+
 let osuser
 let configbase
 
+function setConfig(path = "default"){
+
+    if (path !== "default") {
+         configbase = path
+    } else {
+        if (process.platform === 'win32') {
+            osuser = process.env.USERNAME
+            // for windows we will convert to forward slashes like linux
+            if (altconfig === null) {
+                configbase = process.env.APPDATA.replace(/\\/g, "/")
+            } else {
+                configbase = altconfig.replace(/\\/g, "/")
+                //console.log("using alt config");
+            }
+
+        }
+        else if (process.platform === 'linux') {
+            if (altconfig === null) {
+                osuser = process.env.USER
+                configbase = process.env.HOME + "/" +".config"
+            } else {
+                configbase = altconfig
+                //console.log("using alt config");
+            }
+
+        }
+    }
+    if ( configbase.endsWith("/") ) { configbase += "node-gmail-worker" } else { configbase += "/node-gmail-worker"}
+    if ( !fs.existsSync( configbase ) ) {
+        //console.log("Creating config folder", configbase);
+        fs.mkdirSync( configbase, { recursive: true } )
+    }
+    parseIdentities()
+}
+
+
 //console.log(process.platform);
 //*** maybe add mac in here too
-if (process.platform === 'win32') {
-    osuser = process.env.USERNAME
-    // for windows we will convert to forward slashes like linux
-    if (altconfig === null) {
-        configbase = process.env.APPDATA.replace(/\\/g, "/")
-    } else {
-        configbase = altconfig.replace(/\\/g, "/")
-        //console.log("using alt config");
-    }
-
-}
-else if (process.platform === 'linux') {
-    if (altconfig === null) {
-        osuser = process.env.USER
-        configbase = process.env.HOME + "/" +".config"
-    } else {
-        configbase = altconfig
-        //console.log("using alt config");
-    }
-
-}
-
-if ( configbase.endsWith("/") ) { configbase += "node-gmail-worker" } else { configbase += "/node-gmail-worker"}
 //console.log( osuser , configbase);
 
 
 // setup config and identities
 // LocalConfig is not used but here for possible future use
-let LocalConfig = {}
-function saveLocalConfig() {
-    fs.writeFileSync(configbase + "/config.json", JSON.stringify(LocalConfig,null,4) )
-}
 
 
-if ( !fs.existsSync( configbase ) ) {
-    //console.log("Creating config folder", configbase);
-    fs.mkdirSync( configbase, { recursive: true } )
-    saveLocalConfig()
-} else {
-    if (fs.existsSync(configbase + "/config.json")) {
-        //console.log('Loading config.json.');
-        LocalConfig = JSON.parse( fs.readFileSync(configbase + "/config.json",'utf8') )
-    } else {
-        saveLocalConfig()
-    }
-
-}
 
 
 // Identities can be created with the -n option or setup manually by adding a subfolder to  {configbase}/identities"
@@ -109,8 +106,7 @@ if ( !fs.existsSync( configbase ) ) {
 // an OAuth 2.0 Client ID file named "credentials.json" (see README.md on how to get this file from google ).
 // Also an "options.json" file for this identity (see createIdentity for the default_options).
 // The script will look for any existing identities and add them to ID
-// If no identities exist or any are misconfigured (missing credentials, options or token)
-// the script will not process any jobs and exit
+
 
 // If the scopes change your token will need to be deleted so it can be regenerated
 const GmailScopes = ['https://www.googleapis.com/auth/gmail.send']
@@ -118,8 +114,11 @@ const GmailScopes = ['https://www.googleapis.com/auth/gmail.send']
 let ID = {}
 
 
-// setup the ID object
-parseIdentities()
+// setup the ID object for cli and fork
+if (!_is_module) {
+    setConfig()
+}
+
 
 
 //-----------------------------COMMAND LINE----------------------------------------
@@ -210,6 +209,7 @@ function initModule() {
     exports.create = createIdentity;
     exports.doJob = handleJobs;
     exports.list = listIdentities;
+    exports.config = setConfig;
     exports.msg = mEmitter;
 
     console.log("NGW Module has been initiated");
