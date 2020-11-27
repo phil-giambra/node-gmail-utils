@@ -10,14 +10,12 @@ It can be used 3 ways.
 * Directly from the command line.
 
 
-It can maintain configs for multiple identity's (Gmail accounts)
-
-
+It can maintain configurations for multiple identity's (Gmail accounts)
 
 NOTE: To use this app you will need to obtain an OAuth 2.0 client ID file from Google (see below).
 
 # Install
-node-gmail-worker has not been published to npm yet so for now you have to install it manually
+node-gmail-worker has not been published to npm yet so for now you can install it manually
 
 * `git clone https://github.com/phil-giambra/node-gmail-worker.git`
 * `cd node-gmail-worker`
@@ -29,18 +27,53 @@ or by url
 * local install `npm install https://github.com/phil-giambra/node-gmail-worker.git`
 * global install `npm install -g https://github.com/phil-giambra/node-gmail-worker.git`
 
+# Configuration
+However you choose to use node-gmail-worker it will require a place to store data for the
+identities (gmail/gsuite accounts) that it does jobs for. It will create a folder named
+`node-gmail-worker` with an sub-folder named `identities` for this purpose.
+
+Default location:
+* Linux `/home/{username}/.config/`
+* Windows  `C:\Users\{username}\AppData\Roaming\`
+
+Alternate locations can be specified:
+* command line:  use the -c option
+* fork(): use -c option or send a config packet
+* require(): use the config() method
+
+Example configuration structure:
+```
+node-gmail-worker/
+│
+└───identities/
+   │
+   └───gmailuser@gmail.com/
+   |   │   credentials.json
+   |   │   options.json
+   |
+   └───gsuiteuser@yourdomain.com/
+       │   credentials.json
+       │   options.json
+
+```
+
 ## Using on the command line
-If installed globally you can just use the command <br> `ngworker` <br>otherwise use <br>`node /path/to/node-gmail-worker/index.js`   
+If installed globally you can just use the command  `ngworker`
+
+otherwise use `node /path/to/node-gmail-worker/index.js`   
+
+All output from command line calls is formatted as a json string
+
 ### cli options
 On Windows hosts us a `/` instead of a `-` ( eg. -c becomes /c )
 
 | Syntax               | Description
 | :---                 | :----   
-| `-c /path/to/config` | Use an alternate config location.<br> A folder named node-gmail-worker will be created at the location specified.<br> This option can be used with all other options.
-| `-l `|  Outputs a json string containing a list of the current config's identities and there status         
-| `-n emailAddress`      | Add a new identity to config. <br> This will create a folder named `emailAddress` and an options.json file within it.<br> You need to put your credentials.json from Google into the folder .<br>Can only be combined with -c option.
-| `-a emailAddress`<br> `-a emailAddress auth_code`| `-a emailAddress` will output a json string containing a url from google where the user goes to sign in and get the auth_code<br>   `-a emailAddress auth_code` will trigger an attempt to get an access token and will output a json string containing the results<br>Can only be combined with -c option.
-| `-j '{"json":"string"}'`| Preform a job defined in json text (send an email). <br> This option is not implemented yet.
+| `-c /path/to/config` | Use an alternate config location.<br> Works with all other options.
+| `-l `|  returns a list of available identities and their status         
+| `-n emailAddress`      | Add a new identity to config. <br> Creates `emailAddress` folder <br>Creates options.json file
+| `-a emailAddress`<br> `-a emailAddress auth_code`| `-a emailAddress` returns a url from google for sign in <br><br>   `-a emailAddress auth_code` will trigger an attempt to get an access token and return the results<br>
+| `-j jsonString`| Preform a job defined in a json string<br> Valid job types ["send"].
 
 
 ## Using as a child-process
@@ -48,13 +81,14 @@ You can read the fork_example.js script to see an example of how to use node-gma
 * `node fork_example.js YourEmailAddress`
 
 ## Using as a module
-Note: node-gmail-worker has not been published to npm yet so for now you have to <br>require with a path
+You can read the require_example.js script to see an example of how to use node-gmail-worker as a module with require()
+
+* `const ngw = require('node-gmail-worker');`
+
+or
+
 * `const ngw = require("path/to/node-gmail-worker/index.js")`
 
-or install it locally and use npm link
-* in node-gmail-worker folder `npm link`
-* in your project folder `npm link node-gmail-worker`
-* `const ngw = require("node-gmail-worker")`
 
 
 ## Getting credentials from Google
