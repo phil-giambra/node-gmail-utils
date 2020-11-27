@@ -1,18 +1,15 @@
 
-//  !!! this script is very much a WORK IN PROGRESS
-// do not assume it's correct or working !!!
-
 // This script is an example of using node-gmail-worker as a sub-process
 // execute like { node fork_example.js emailAddress }
+
 const { fork } = require('child_process');
-const readline = require('readline');
 
+
+// Every job or auth request packet sent to the worker will require an
+// "id" property that is set to a vaild Identtity in it's config.
+// for this example we get the Identity to use from the last
+// arguement on command line
 let args = process.argv
-//console.log("cmd-args", args);
-
-// Every request packet sent to the worker will require the "id" property
-// set to a vaild Identtity in it's config.
-// for this example we get the Identity to use from the command line
 let user_id = args[args.length - 1]
 console.log("Gmail user", user_id);
 

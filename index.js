@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 
+// Identities can be created with the -n option or setup manually by adding a subfolder to  {configbase}/identities"
+// The folder should be named as the users gmail or gsuite address and contain
+// an OAuth 2.0 Client ID file named "credentials.json" (see README.md on how to get this file from google ).
+// Also an "options.json" file for this identity (see createIdentity for the default_options).
+// The script will look for any existing identities and add them to ID
+
 
 const fs = require('fs');
 const {google} = require('googleapis');
 
 
 // check if run as a sub-process
-
 let _is_subprocess = true
 if (!process.send) { _is_subprocess = false }
 
@@ -17,19 +22,18 @@ if (require.main === module) { _is_module = false }
 
 // setup the outputs
 let mEmitter
-let output
-let output_error = []
 
 
-// check for cmd line options and setup the config location
 let altconfig = null
 let new_identity = null
 let authInfo = { needed:false, id:null, key:null }
 let _list_ids = false
 let _do_job = false
 let job_text = null
+
 let args = process.argv
-//console.log("cmd-args", args);
+//console.log("command line", args);
+// check for cmd line options
 args.forEach((item, i) => {
     // use alternate config location (cli and fork only)
     if (item === "-c" || item === "/c") { altconfig = args[i+1]}
@@ -54,24 +58,6 @@ args.forEach((item, i) => {
 // setup config location
 let osuser
 let configbase
-//console.log(process.platform);
-//*** maybe add mac in here too
-
-
-
-
-
-
-
-
-
-
-// Identities can be created with the -n option or setup manually by adding a subfolder to  {configbase}/identities"
-// The folder should be named as the users gmail or gsuite address and contain
-// an OAuth 2.0 Client ID file named "credentials.json" (see README.md on how to get this file from google ).
-// Also an "options.json" file for this identity (see createIdentity for the default_options).
-// The script will look for any existing identities and add them to ID
-
 
 // If the scopes change your token will need to be deleted so it can be regenerated
 const GmailScopes = ['https://www.googleapis.com/auth/gmail.send']
@@ -89,7 +75,6 @@ if (!_is_module) {
 //-----------------------------COMMAND LINE----------------------------------------
 function cliOut(packet) {
     console.log(JSON.stringify(packet,null,4));
-    //setTimeout(function(){process.exit()},2000)
     process.exit()
 }
 
@@ -158,7 +143,8 @@ function hookToMainProcess() {
           }
           else {
               // for unknow packet types send back as error packet
-              packet.type = "error"
+              packet.status = "error"
+              packet.errors = ['Invalid packet type']
               process.send(packet)
               //console.log('Unknown type', packet);
           }
@@ -168,10 +154,9 @@ function hookToMainProcess() {
 
 function initModule() {
     const EventEmitter = require('events');
-
     class ModEmitter extends EventEmitter {}
-
     mEmitter = new ModEmitter();
+
     exports.auth = handleAuthRequest;
     exports.create = createIdentity;
     exports.list = listIdentities;
@@ -186,6 +171,9 @@ function initModule() {
 
 //------------------------------------COMMON FUNCTIONS----------------------------------------------
 // set the configuration location
+// for cli and fork this will be called on scrip[t startup
+// for module usage you will need to call it explicitly after require 
+//*** maybe add mac in here too
 function setConfig(path = "default"){
 
     if (path !== "default") {
