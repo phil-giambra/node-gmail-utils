@@ -96,8 +96,9 @@ if (_list_ids) {
 // execute a job if requested from the command line
 if ( _do_job ) {
     // try to parse the json
+    let jobJson
     try {
-        let jobJson = JSON.parse(job_text)
+        jobJson = JSON.parse(job_text)
     } catch (e) {
         let output = { type:"job", status:"error", errors:[] }
         output.errors.push("Error parsing json string for job");
@@ -331,10 +332,10 @@ function getAuthToken(packet) {
             cliOut(packet)
         }
     }
-
+    let oAuth2Client
     try {
         const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
-        const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+        oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
     } catch (e) {
         packet.errors.push("Error creating oauth client");
         if (ID[id].creds) { packet.errors.push("Invalid credentials.json"); }
@@ -406,7 +407,7 @@ function createIdentity(id) {
         output.path =  configbase+"/identities/"+id
         let default_options = { dname:id , pre_body:"", post_body:"", cc:[] }
         try {
-            fs.mkdirSync( path , { } )
+            fs.mkdirSync( output.path , { } )
             fs.writeFileSync(output.path + "/options.json", JSON.stringify(default_options,null,4) )
         } catch (e) {
             output.status = "error"
@@ -453,9 +454,27 @@ function handleJobs(packet) {
 
 // try to create oauth client to use for job
 function authorize(id, packet, callback) {
-    const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
-    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    let oAuth2Client
+    try {
+        const {client_secret, client_id, redirect_uris} = ID[id].creds.installed;
+        oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    } catch (e) {
+
+    }
+
     oAuth2Client.setCredentials(ID[id].token);
+
+    // need to test and implemnt check if access token expired.
+    // maybe compare to current tokens and update if needed
+    oauth2Client.on('tokens', (tokens) => {
+        console.log("oauth tokens event ", tokens);
+        /*if (tokens.refresh_token) {
+            // store the refresh_token in my database!
+            console.log(tokens.refresh_token);
+        }
+        console.log(tokens.access_token);*/
+    });
+
     callback(id, packet, oAuth2Client);
 
 }
@@ -499,9 +518,9 @@ async function sendMail(id, packet, auth) {
             raw: encodedMessage,
         },
     });
-    console.log("got responce from gmail",res); //res.data
+    //console.log("got responce from gmail",res); //res.data
     packet.status = "done"
-    packet.res = res
+    packet.results = res
     if (_is_subprocess === true) {
         process.send(packet)
     }
@@ -510,5 +529,5 @@ async function sendMail(id, packet, auth) {
     } else {
         cliOut(packet)
     }
-    //return res.data;
+
 }

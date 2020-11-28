@@ -42,3 +42,61 @@ ngworker -n bob@gmail.com
     ]
 }
 COMMENT
+
+# authorize an identity (first call)--------------------------------------------
+ngworker -a bob@gmail.com
+
+<<COMMENT
+{
+    "needed": true,
+    "id": "bob@gmail.com",
+    "key": null,
+    "errors": [],
+    "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&.....",
+    "status": "done"
+}
+
+
+
+COMMENT
+
+# authorize an identity (second call)-------------------------------------------
+ngworker -a bob@gmail.com auth_code_from_google
+
+<<COMMENT
+{
+    "needed": true,
+    "id": "bob@gmail.com",
+    "key": "auth_code_from_google",
+    "status": "done"
+}
+
+COMMENT
+
+
+# request a job (send an email)-------------------------------------------------
+ngworker -j '{ "type":"job", "job":"send", "id":"bob@gmail.com", "data":{"toName":"Phil Giambra","toAddr":"philgiambra@gmail.com","subject":"node-gmail-worker cli_example.js TEST","body":"This is a gmail sent by node-gmail-worker running on the command line","options":{}}}'
+
+<<COMMENT
+{
+    "type": "job",
+    "job": "send",
+    "id": "bob@gmail.com",
+    "data": {
+        "toName": "Phil Giambra",
+        "toAddr": "philgiambra@gmail.com",
+        "subject": "node-gmail-worker cli_example.js TEST",
+        "body": "This is a gmail sent by node-gmail-worker running on the command line",
+        "options": {
+            "dname": "bob@gmail.com",
+            "pre_body": "",
+            "post_body": "",
+            "cc": []
+        }
+    },
+    "errors": [],
+    "status": "done",
+    # the results is an object from google with info about the api call
+    "results": {}
+}
+COMMENT
