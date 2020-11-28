@@ -172,7 +172,7 @@ function initModule() {
 //------------------------------------COMMON FUNCTIONS----------------------------------------------
 // set the configuration location
 // for cli and fork this will be called on scrip[t startup
-// for module usage you will need to call it explicitly after require 
+// for module usage you will need to call it explicitly after require
 //*** maybe add mac in here too
 function setConfig(path = "default"){
 
@@ -378,15 +378,20 @@ function getAuthToken(packet) {
 
 
 function emailValid(id){
-    //*** set this up ?? maybe put it in createIdentity
-    return true
+    var mailformat = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+    if( id.match(mailformat) ){
+        return true;
+    } else {
+        return false;
+    }
 }
 
 // create the folder and options.json for a new identity
 // This is a syncronus operation so as a module it will directly
 // return the output instead of emitting an event
 function createIdentity(id) {
-    let output = {type:"create", status:"done" , id:id, errors:[], results:[] }
+    id = id.toLowerCase()
+    let output = {type:"create", status:"done" , id:id, path:"", errors:[], results:[] }
     if (ID[id]){
         output.status = "error"
         output.errors.push(`Create identity failed: Already exists ${id}  `)
@@ -398,16 +403,24 @@ function createIdentity(id) {
         output.errors.push(`Create identity failed: Invalid email address ${id}  `)
     }
     else { //*** maybe need to catch write error here as well( or at least test for them)
-        let path =  configbase+"/identities/"+id
+        output.path =  configbase+"/identities/"+id
         let default_options = { dname:id , pre_body:"", post_body:"", cc:[] }
-        fs.mkdirSync( path , { } )
-        fs.writeFileSync(path + "/options.json", JSON.stringify(default_options,null,4) )
+        try {
+            fs.mkdirSync( path , { } )
+            fs.writeFileSync(output.path + "/options.json", JSON.stringify(default_options,null,4) )
+        } catch (e) {
+            output.status = "error"
+            output.errors.push(`Create identity failed: unable to create ${output.path}  `)
+
+        }
+    }
+    if (output.status === "done") {
         output.results.push(`Identity created for ${id}`)
         output.results.push(`You must place Google OAuth 2.0 client ID credentials at the following location`)
         output.results.push(`${configbase}/identities/${id}/credentials.json`)
-
+        registerIdentity(id)
     }
-    registerIdentity(id)
+
     if (_is_subprocess) {
         process.send(output)
     }
